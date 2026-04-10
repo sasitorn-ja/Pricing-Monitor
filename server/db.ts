@@ -1,7 +1,16 @@
 import Database from "better-sqlite3";
-import path from "node:path";
- 
-const dbPath = path.resolve(process.cwd(), "storage/pricing-monitor.db");
+import fs from "node:fs";
+import {
+  createDatabaseFromCsv,
+  getCsvPath,
+  getDefaultDbPath
+} from "./database-utils.js";
+
+const dbPath = getDefaultDbPath();
+
+if (!fs.existsSync(dbPath)) {
+  createDatabaseFromCsv(Database, getCsvPath(), dbPath);
+}
 
 export const db = new Database(dbPath, {
   readonly: false,
