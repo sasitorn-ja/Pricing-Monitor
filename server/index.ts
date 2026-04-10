@@ -1,108 +1,41 @@
 import cors from "cors";
 import express from "express";
-import { db } from "./db.js";
 import path from "path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import {
-  BASELINE_END,
-  BASELINE_START,
-  CAMPAIGN_START,
-  TARGET_INCREASE,
-  metadataQuery,
-  projectStatusQuery,
-  projectTrendQuery,
-  summaryQuery,
-  trendQuery
-} from "./queries.js";
-
-type ProjectRow = {
-  siteNo: string;
-  siteName: string;
-  divisionName: string;
-  fcName: string;
-  sectName: string;
-  segment: string;
-  channel: string;
-  latestDay: string;
-  baselineNetPrice: number;
-  currentNetPrice: number;
-  increaseAmount: number;
-  targetPercent: number;
-  ladder: string;
-  baselineVolume: number;
-  postVolume: number;
-};
+  getMeta,
+  getProjectTrend,
+  getProjects,
+  getSummary,
+  getTrend
+} from "./api-handlers.js";
 
 const app = express();
 app.use(cors());
 
 app.get("/api/meta", (_req, res) => {
-  const metadata = db.prepare(metadataQuery).get();
-
-  res.json({
-    metadata,
-    config: {
-      baselineStart: BASELINE_START,
-      baselineEnd: BASELINE_END,
-      campaignStart: CAMPAIGN_START,
-      targetIncrease: TARGET_INCREASE
-    }
-  });
+  res.json(getMeta());
 });
 
 app.get("/api/summary", (_req, res) => {
-  const summary = db.prepare(summaryQuery).get();
-  res.json(summary);
+  res.json(getSummary());
 });
 
 app.get("/api/trend", (_req, res) => {
-  const trend = db.prepare(trendQuery).all();
-  res.json(trend);
+  res.json(getTrend());
 });
 
 app.get("/api/projects", (req, res) => {
-  const search = String(req.query.search ?? "").trim().toLowerCase();
-  const ladder = String(req.query.ladder ?? "").trim();
-  const onlyBelowTarget = String(req.query.onlyBelowTarget ?? "") === "true";
-
-  let rows = db.prepare(projectStatusQuery).all() as ProjectRow[];
-
-  if (search) {
-    rows = rows.filter((row) => {
-      return (
-        row.siteNo.toLowerCase().includes(search) ||
-        row.siteName.toLowerCase().includes(search) ||
-        row.divisionName.toLowerCase().includes(search) ||
-        row.fcName.toLowerCase().includes(search)
-      );
-    });
-  }
-
-  if (ladder) {
-    rows = rows.filter((row) => row.ladder === ladder);
-  }
-
-  if (onlyBelowTarget) {
-    rows = rows.filter((row) => row.increaseAmount < TARGET_INCREASE);
-  }
-
-  const leaderboard = [...rows]
-    .sort((a, b) => a.targetPercent - b.targetPercent)
-    .slice(0, 15);
-
-  res.json({
-    rows,
-    leaderboard
-  });
+  res.json(
+    getProjects({
+      search: String(req.query.search ?? ""),
+      ladder: String(req.query.ladder ?? ""),
+      onlyBelowTarget: String(req.query.onlyBelowTarget ?? "") === "true"
+    })
+  );
 });
 
 app.get("/api/projects/:siteNo/trend", (req, res) => {
-  const siteNo = req.params.siteNo;
-  const trend = db.prepare(projectTrendQuery).all(siteNo);
-  res.json(trend);
+  res.json(getProjectTrend(req.params.siteNo));
 });
 
 const port = Number(process.env.PORT ?? 8787);

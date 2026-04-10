@@ -61,6 +61,7 @@ Quick checklist
 - [ ] Add `Procfile` (included) or set Start Command to `npm start` on your host.
 - [ ] Run `npm run import-data` during build to generate `storage/pricing-monitor.db`, or include the DB in the image.
 
-Frontend note
+Vercel note
 
-- After deploying the backend, set `VITE_API_BASE` in your Vercel frontend project to the backend's base URL (e.g. `https://pricing-api.example.com`). The frontend is already updated to use this env var.
+- This repository now exposes the API through `api/*.ts`, so the frontend and backend can live in the same Vercel project.
+- `npm run build` creates `storage/pricing-monitor.db` from `data.csv` during the build, so the deployed functions can read the database directly.

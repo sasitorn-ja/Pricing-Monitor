@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
     "dev:server": "node --import tsx --watch server/index.ts",
-    "build": "tsc -b && vite build",
+    "build": "npm run import-data && tsc -b && vite build",
     "import-data": "node --import tsx scripts/import-data.ts",
     "start": "node --import tsx server/index.ts"
   },
