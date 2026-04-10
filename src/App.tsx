@@ -266,7 +266,7 @@ export function App() {
 
       try {
         const projectTrend = await fetchJson<ProjectTrendPoint[]>(
-          `/api/projects/${selectedSite}/trend`
+          `/api/project-trend?siteNo=${encodeURIComponent(selectedSite)}`
         );
 
         setSelectedTrend(projectTrend);
