@@ -143,6 +143,7 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 250;
 const API_TIMEOUT_MS = 20_000;
 const tableColumnHelp = {
+  segment: "กลุ่มขนาดโครงการเดียวกับที่ใช้กรองในกราฟสัดส่วนด้านบน",
   ladder: "ระดับการขึ้นราคาเทียบเป้า 300 บาท",
   baseline: "ค่าเฉลี่ย NP_AVG ตรง ๆ ช่วงวันที่ 1-24",
   current: "net price ล่าสุดหลังวันที่ 25",
@@ -520,6 +521,24 @@ export function App() {
   const totalPages = Math.max(1, Math.ceil(projectTotal / PAGE_SIZE));
   const pageStart = projectTotal === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const pageEnd = Math.min(currentPage * PAGE_SIZE, projectTotal);
+  const activeTableFilters = [
+    { label: "Ladder", value: selectedBucket || "ทั้งหมด" },
+    {
+      label: "วันที่",
+      value: selectedDay ? formatThaiDateShort(selectedDay) : "ราคาล่าสุด"
+    },
+    {
+      label: "Segment",
+      value: selectedSegments.length > 0 ? selectedSegments.join(", ") : "ทุก segment"
+    }
+  ];
+
+  if (search.trim()) {
+    activeTableFilters.push({
+      label: "Search",
+      value: search.trim()
+    });
+  }
 
   if (!error && (metaLoading || !hasLoadedSummary)) {
     return <div className="shell">Loading dashboard...</div>;
@@ -799,29 +818,49 @@ export function App() {
           </div>
         </div>
 
-        <div className="filterShell">
-          <div className="filterInlineRow">
-            <input
-              className="searchField"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="ค้นหา SITE_NAME, SITE_NO, division"
-            />
-            <label className="filterField filterFieldSelect compactField">
-              <span>เลือกวันที่</span>
-              <select
-                value={selectedDay}
-                onChange={(event) => setSelectedDay(event.target.value)}
-              >
-                <option value="">ราคาล่าสุดทุกวัน</option>
-                {availableDays.map((day) => (
-                  <option key={day} value={day}>
-                    {formatThaiDate(day)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="bucketFilterGroup inlineBuckets">
+        <div className="filterShell projectFilterShell">
+          <div className="tableFilterTop">
+            <div className="tableFilterInputs">
+              <input
+                className="searchField"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="ค้นหา SITE_NAME, SITE_NO, division, segment"
+              />
+              <label className="filterField filterFieldSelect compactField">
+                <span>เลือกวันที่</span>
+                <select
+                  value={selectedDay}
+                  onChange={(event) => setSelectedDay(event.target.value)}
+                >
+                  <option value="">ราคาล่าสุดทุกวัน</option>
+                  {availableDays.map((day) => (
+                    <option key={day} value={day}>
+                      {formatThaiDate(day)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="tableFilterStatsCompact">
+              <span className="tableFilterStatsLabel">รายการ</span>
+              <strong>
+                {hasLoadedProjects
+                  ? `${formatNumber(pageStart)}-${formatNumber(pageEnd)}`
+                  : "..."}
+              </strong>
+              <span>
+                {hasLoadedProjects
+                  ? `จาก ${formatNumber(projectTotal)}`
+                  : "กำลังโหลดรายการโครงการ..."}
+              </span>
+            </div>
+          </div>
+
+          <div className="tableCompactRow">
+            <span className="tableCompactLabel">LADDER</span>
+            <div className="bucketFilterGroup tableBucketRow">
               <button
                 type="button"
                 className={`bucketFilter ${selectedBucket === "" ? "selected" : ""}`}
@@ -842,16 +881,51 @@ export function App() {
             </div>
           </div>
 
-          <div className="filterMetaRow">
-            <div className="paginationSummary">
-              กรองอยู่: {selectedBucket || "ทั้งหมด"} /{" "}
-              {selectedDay ? formatThaiDateShort(selectedDay) : "ราคาล่าสุด"}
+          <div className="tableCompactRow">
+            <span className="tableCompactLabel">SEGMENT</span>
+            <div className="compactFilterChips">
+              <button
+                type="button"
+                className={`compactFilterChip ${selectedSegments.length === 0 ? "selected" : ""}`}
+                onClick={() => setSelectedSegments([])}
+              >
+                ทั้งหมด
+              </button>
+              {availableSegments.map((segment) => (
+                <button
+                  key={segment}
+                  type="button"
+                  className={`compactFilterChip ${selectedSegments.includes(segment) ? "selected" : ""}`}
+                  onClick={() => toggleValue(segment, setSelectedSegments)}
+                >
+                  {segment}
+                </button>
+              ))}
             </div>
-            <div className="paginationSummary">
-              {hasLoadedProjects
-                ? `แสดง ${pageStart}-${pageEnd} จาก ${formatNumber(projectTotal)} รายการ`
-                : "กำลังโหลดรายการโครงการ..."}
+          </div>
+
+          <div className="tableFilterFooter">
+            <div className="tableActiveFilters">
+              {activeTableFilters.map((filter) => (
+                <span key={`${filter.label}-${filter.value}`} className="tableActivePill">
+                  <strong>{filter.label}</strong>
+                  {filter.value}
+                </span>
+              ))}
             </div>
+            <button
+              type="button"
+              className="clearFilterButton"
+              onClick={() => {
+                setSearch("");
+                setSelectedDay("");
+                setSelectedBucket("");
+                setSelectedSegments([]);
+                setCurrentPage(1);
+              }}
+            >
+              รีเซ็ต filter ตาราง
+            </button>
           </div>
         </div>
 
@@ -875,6 +949,17 @@ export function App() {
                 <tr>
                   <th>SITE_NO</th>
                   <th>SITE_NAME</th>
+                  <th>
+                    <HeaderWithHint
+                      hintKey="segment"
+                      label="Segment"
+                      hint={tableColumnHelp.segment}
+                      activeHint={activeHint}
+                      onToggle={(key) =>
+                        setActiveHint((current) => (current === key ? null : key))
+                      }
+                    />
+                  </th>
                   <th>
                     <HeaderWithHint
                       hintKey="ladder"
@@ -967,6 +1052,7 @@ export function App() {
                         </span>
                       </div>
                     </td>
+                    <td>{row.segment || "-"}</td>
                     <td>{row.ladder}</td>
                     <td>{formatNumber(row.baselineNetPrice)}</td>
                     <td>{formatNumber(row.currentNetPrice)}</td>

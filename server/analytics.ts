@@ -62,6 +62,8 @@ export type ProjectRow = {
   latestDay: string;
   baselineNetPrice: number;
   currentNetPrice: number;
+  baselineDisc: number;
+  currentDisc: number;
   increaseAmount: number;
   targetPercent: number;
   ladder: string;
@@ -90,8 +92,10 @@ type PostDailyRow = {
   segment: string;
   channel: string;
   baselineNetPrice: number;
+  baselineDisc: number;
   baselineVolume: number;
   postNetPrice: number;
+  postDisc: number;
   postVolume: number;
   increaseAmount: number;
   targetPercent: number;
@@ -189,6 +193,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       segment: string;
       channel: string;
       priceTotal: number;
+      discountTotal: number;
       recordCount: number;
       totalVolume: number;
     }
@@ -201,6 +206,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       siteName: string;
       day: string;
       priceTotal: number;
+      discountTotal: number;
       recordCount: number;
       totalVolume: number;
     }
@@ -239,11 +245,14 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
         segment: safeString(record.SEGMENT),
         channel: safeString(record.CHANNEL),
         priceTotal: 0,
+        discountTotal: 0,
         recordCount: 0,
         totalVolume: 0
       };
 
+      const dcAvg = Number(record.DC_AVG ?? 0);
       current.priceTotal += npAvg;
+      current.discountTotal += Number.isFinite(dcAvg) ? dcAvg : 0;
       current.recordCount += 1;
       current.totalVolume += Number.isFinite(sumQ) && sumQ > 0 ? sumQ : 0;
       baselineAccumulator.set(siteNo, current);
@@ -256,11 +265,14 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
         siteName: safeString(record.SITE_NAME),
         day: dpDate.raw,
         priceTotal: 0,
+        discountTotal: 0,
         recordCount: 0,
         totalVolume: 0
       };
 
+      const dcAvg = Number(record.DC_AVG ?? 0);
       current.priceTotal += npAvg;
+      current.discountTotal += Number.isFinite(dcAvg) ? dcAvg : 0;
       current.recordCount += 1;
       current.totalVolume += Number.isFinite(sumQ) && sumQ > 0 ? sumQ : 0;
       postAccumulator.set(key, current);
@@ -278,6 +290,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       segment: string;
       channel: string;
       baselineNetPrice: number;
+      baselineDisc: number;
       baselineVolume: number;
     }
   >();
@@ -296,6 +309,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       segment: value.segment,
       channel: value.channel,
       baselineNetPrice: value.priceTotal / value.recordCount,
+      baselineDisc: value.discountTotal / value.recordCount,
       baselineVolume: value.totalVolume
     });
   }
@@ -309,6 +323,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
     }
 
     const postNetPrice = value.priceTotal / value.recordCount;
+    const postDisc = value.discountTotal / value.recordCount;
     const rawIncreaseAmount = postNetPrice - baseline.baselineNetPrice;
     const increaseAmount = Math.max(rawIncreaseAmount, 0);
     const targetPercent = (increaseAmount / TARGET_INCREASE) * 100;
@@ -324,8 +339,10 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       segment: baseline.segment,
       channel: baseline.channel,
       baselineNetPrice: baseline.baselineNetPrice,
+      baselineDisc: baseline.baselineDisc,
       baselineVolume: baseline.baselineVolume,
       postNetPrice,
+      postDisc,
       postVolume: value.totalVolume,
       increaseAmount,
       targetPercent,
@@ -462,6 +479,8 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       latestDay: row.day,
       baselineNetPrice: round2(row.baselineNetPrice),
       currentNetPrice: round2(row.postNetPrice),
+      baselineDisc: round2(row.baselineDisc),
+      currentDisc: round2(row.postDisc),
       increaseAmount: round2(row.increaseAmount),
       targetPercent: round2(row.targetPercent),
       ladder: row.ladder,
@@ -488,6 +507,8 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       latestDay: row.day,
       baselineNetPrice: round2(row.baselineNetPrice),
       currentNetPrice: round2(row.postNetPrice),
+      baselineDisc: round2(row.baselineDisc),
+      currentDisc: round2(row.postDisc),
       increaseAmount: round2(row.increaseAmount),
       targetPercent: round2(row.targetPercent),
       ladder: row.ladder,

@@ -345,6 +345,110 @@ select {
   background: rgba(13, 25, 45, 0.62);
 }
 
+.projectFilterShell {
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 22px;
+}
+
+.tableFilterTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.tableFilterInputs {
+  display: grid;
+  grid-template-columns: minmax(340px, 1.35fr) minmax(220px, 0.9fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.tableFilterStatsCompact {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 157, 214, 0.18);
+  background: rgba(14, 29, 52, 0.72);
+  color: #dce8ff;
+  white-space: nowrap;
+}
+
+.tableFilterStatsCompact strong {
+  font-size: 1rem;
+}
+
+.tableFilterStatsCompact span {
+  color: #9fb0d0;
+  font-size: 0.88rem;
+}
+
+.tableFilterStatsLabel {
+  color: #8fb8ea !important;
+  font-size: 0.76rem !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tableCompactRow {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid rgba(123, 157, 214, 0.12);
+}
+
+.tableCompactLabel {
+  padding-top: 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #8fb8ea;
+ }
+
+.tableFilterFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.tableActiveFilters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tableActivePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 157, 214, 0.18);
+  background: rgba(14, 29, 52, 0.72);
+  color: #cfe0ff;
+  font-size: 0.84rem;
+}
+
+.tableActivePill strong {
+  color: #8fb8ea;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tableBucketRow {
+  gap: 8px;
+}
+
 .filterInlineRow {
   display: flex;
   align-items: end;
@@ -411,7 +515,7 @@ select {
   background: rgba(7, 17, 34, 0.92);
   color: #eef4ff;
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 11px 14px;
 }
 
 select {
@@ -533,7 +637,7 @@ select {
   background: rgba(7, 17, 34, 0.92);
   color: #dce8ff;
   border-radius: 999px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   cursor: pointer;
   transition:
     border-color 0.2s ease,
@@ -646,13 +750,6 @@ th {
   box-shadow: 0 14px 30px rgba(2, 8, 20, 0.34);
 }
 
-.inlineBuckets {
-  display: inline-flex;
-  flex-wrap: nowrap;
-  gap: 10px;
-  flex: 0 0 auto;
-}
-
 tbody tr {
   cursor: pointer;
   transition: background 0.2s ease;
@@ -719,6 +816,25 @@ tbody tr:hover,
     min-width: 0;
   }
 
+  .tableFilterTop,
+  .tableFilterInputs {
+    grid-template-columns: 1fr;
+  }
+
+  .tableFilterStatsCompact {
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .tableCompactRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .tableCompactLabel {
+    padding-top: 0;
+  }
+
   .filterInlineRow {
     flex-wrap: wrap;
     overflow: visible;
@@ -728,10 +844,6 @@ tbody tr:hover,
   .compactField {
     flex: 1 1 100%;
     min-width: 0;
-  }
-
-  .inlineBuckets {
-    flex-wrap: wrap;
   }
 
   .toggleCard {

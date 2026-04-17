@@ -1,11 +1,12 @@
-import { buildAnalytics, type PricingRecord, type ProjectRow } from "./analytics.js";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
   BASELINE_END,
   BASELINE_START,
   CAMPAIGN_START,
   TARGET_INCREASE
 } from "./queries.js";
-import { getCsvPath, readPricingRecordsFromCsv } from "./csv-data.js";
+import { buildAnalytics, type PricingRecord, type ProjectRow } from "./analytics.js";
 
 type AnalyticsSnapshot = ReturnType<typeof buildAnalytics>;
 
@@ -19,67 +20,186 @@ type CachedFilteredSnapshot = {
   snapshot: AnalyticsSnapshot;
 };
 
+const REMOTE_FETCH_TIMEOUT_MS = 15_000;
 const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const PERSISTED_CACHE_PATH = path.join(
+  process.cwd(),
+  ".cache",
+  "pricing-monitor-records.json"
+);
 
-const csvCache = {
+const remoteCache = {
   expiresAt: 0,
-  signature: "",
   snapshot: null as AnalyticsSnapshot | null,
-  records: null as PricingRecord[] | null
+  records: null as PricingRecord[] | null,
+  fetchedAt: 0
 };
 const filteredSnapshotCache = new Map<string, CachedFilteredSnapshot>();
-let pendingCsvSnapshot:
+let pendingRemoteSnapshot:
   | Promise<{
       snapshot: AnalyticsSnapshot;
       records: PricingRecord[];
     }>
   | null = null;
+let pendingCacheHydration: Promise<void> | null = null;
+let hasHydratedPersistedCache = false;
 
-function applyCsvCache(records: PricingRecord[], signature: string) {
+async function fetchRemoteRecords() {
+  const apiUrl = process.env.DATAOCEAN_API_URL ?? "";
+  const apiToken = process.env.DATAOCEAN_API_TOKEN ?? "";
+
+  if (!apiUrl || !apiToken) {
+    throw new Error(
+      "Missing DATAOCEAN_API_URL or DATAOCEAN_API_TOKEN for remote analytics mode."
+    );
+  }
+
+  const response = await fetch(apiUrl, {
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      Accept: "application/json"
+    },
+    signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Remote API request failed with status ${response.status}`);
+  }
+
+  const body = (await response.json()) as unknown;
+
+  if (!Array.isArray(body)) {
+    throw new Error("Remote API response is not an array");
+  }
+
+  return body as PricingRecord[];
+}
+
+async function persistRemoteRecords(records: PricingRecord[]) {
+  await mkdir(path.dirname(PERSISTED_CACHE_PATH), { recursive: true });
+  await writeFile(
+    PERSISTED_CACHE_PATH,
+    JSON.stringify({
+      fetchedAt: Date.now(),
+      records
+    })
+  );
+}
+
+function applyRemoteCache(records: PricingRecord[], fetchedAt = Date.now()) {
   const snapshot = buildAnalytics(records);
   filteredSnapshotCache.clear();
-  csvCache.records = records;
-  csvCache.snapshot = snapshot;
-  csvCache.signature = signature;
-  csvCache.expiresAt = Date.now() + MEMORY_CACHE_TTL_MS;
+  remoteCache.records = records;
+  remoteCache.snapshot = snapshot;
+  remoteCache.fetchedAt = fetchedAt;
+  remoteCache.expiresAt = fetchedAt + MEMORY_CACHE_TTL_MS;
   return { snapshot, records };
 }
 
-async function loadCsvSnapshot() {
-  const { records, signature } = await readPricingRecordsFromCsv();
-
-  if (
-    csvCache.snapshot &&
-    csvCache.records &&
-    csvCache.signature === signature &&
-    csvCache.expiresAt > Date.now()
-  ) {
-    return {
-      snapshot: csvCache.snapshot,
-      records: csvCache.records
-    };
+async function hydratePersistedCache() {
+  if (hasHydratedPersistedCache) {
+    return;
   }
 
-  return applyCsvCache(records, signature);
-}
+  if (!pendingCacheHydration) {
+    pendingCacheHydration = (async () => {
+      try {
+        const raw = await readFile(PERSISTED_CACHE_PATH, "utf8");
+        const parsed = JSON.parse(raw) as {
+          fetchedAt?: number;
+          records?: unknown;
+        };
 
-async function getCsvSnapshot() {
-  if (csvCache.snapshot && csvCache.records && csvCache.expiresAt > Date.now()) {
-    return {
-      snapshot: csvCache.snapshot,
-      records: csvCache.records
-    };
-  }
+        if (!Array.isArray(parsed.records) || parsed.records.length === 0) {
+          return;
+        }
 
-  if (!pendingCsvSnapshot) {
-    pendingCsvSnapshot = loadCsvSnapshot();
+        applyRemoteCache(
+          parsed.records as PricingRecord[],
+          typeof parsed.fetchedAt === "number" ? parsed.fetchedAt : Date.now()
+        );
+      } catch {
+        // Ignore missing or invalid persisted cache and fall back to remote fetch.
+      } finally {
+        hasHydratedPersistedCache = true;
+      }
+    })();
 
-    pendingCsvSnapshot.finally(() => {
-      pendingCsvSnapshot = null;
+    pendingCacheHydration.finally(() => {
+      pendingCacheHydration = null;
     });
   }
 
-  return pendingCsvSnapshot;
+  await pendingCacheHydration;
+}
+
+async function refreshRemoteSnapshot() {
+  const records = await fetchRemoteRecords();
+  const result = applyRemoteCache(records);
+  await persistRemoteRecords(records);
+  return result;
+}
+
+function toReadableError(error: unknown) {
+  if (error instanceof Error) {
+    const message = error.message;
+    const cause =
+      typeof error.cause === "object" && error.cause !== null
+        ? String((error.cause as { code?: string; message?: string }).code ?? "") +
+          " " +
+          String((error.cause as { code?: string; message?: string }).message ?? "")
+        : "";
+    const combined = `${message} ${cause}`;
+
+    if (combined.includes("ENOTFOUND")) {
+      return "Cannot resolve DataOcean host. Check internet/DNS or corporate VPN access.";
+    }
+
+    if (combined.includes("401")) {
+      return "DataOcean token was rejected. Check DATAOCEAN_API_TOKEN.";
+    }
+
+    if (combined.includes("timed out") || combined.includes("TimeoutError")) {
+      return `DataOcean did not respond within ${REMOTE_FETCH_TIMEOUT_MS / 1000} seconds.`;
+    }
+
+    if (combined.includes("fetch failed")) {
+      return "Cannot reach DataOcean API. Check internet connection, VPN, or API URL.";
+    }
+
+    return message;
+  }
+
+  return "Unknown remote data error";
+}
+
+async function getRemoteSnapshot() {
+  await hydratePersistedCache();
+
+  const now = Date.now();
+  if (remoteCache.snapshot && remoteCache.records && remoteCache.expiresAt > now) {
+    return {
+      snapshot: remoteCache.snapshot,
+      records: remoteCache.records
+    };
+  }
+
+  if (!pendingRemoteSnapshot) {
+    pendingRemoteSnapshot = refreshRemoteSnapshot();
+
+    pendingRemoteSnapshot.finally(() => {
+      pendingRemoteSnapshot = null;
+    });
+  }
+
+  if (remoteCache.snapshot && remoteCache.records) {
+    return {
+      snapshot: remoteCache.snapshot,
+      records: remoteCache.records
+    };
+  }
+
+  return pendingRemoteSnapshot;
 }
 
 function normalizeFilterValues(values: string[] = []) {
@@ -110,11 +230,11 @@ function buildFilterCacheKey(filters: FilterParams) {
   const divisions = normalizeFilterValues(filters.divisions).sort();
   const segments = normalizeFilterValues(filters.segments).sort();
 
-  return JSON.stringify({ divisions, segments, signature: csvCache.signature });
+  return JSON.stringify({ divisions, segments });
 }
 
 async function getFilteredSnapshot(filters: FilterParams = {}) {
-  const { snapshot, records } = await getCsvSnapshot();
+  const { snapshot, records } = await getRemoteSnapshot();
   const cacheKey = buildFilterCacheKey(filters);
   const cached = filteredSnapshotCache.get(cacheKey);
 
@@ -131,14 +251,14 @@ async function getFilteredSnapshot(filters: FilterParams = {}) {
   const filteredSnapshot = buildAnalytics(filteredRecords);
   filteredSnapshotCache.set(cacheKey, {
     snapshot: filteredSnapshot,
-    expiresAt: csvCache.expiresAt
+    expiresAt: remoteCache.expiresAt
   });
 
   return filteredSnapshot;
 }
 
 export async function getMeta() {
-  const { snapshot, records } = await getCsvSnapshot();
+  const { snapshot, records } = await getRemoteSnapshot();
   const divisions = [
     ...new Set(
       records
@@ -209,7 +329,8 @@ export async function getProjects(params: {
         row.siteNo.toLowerCase().includes(normalizedSearch) ||
         row.siteName.toLowerCase().includes(normalizedSearch) ||
         row.divisionName.toLowerCase().includes(normalizedSearch) ||
-        row.fcName.toLowerCase().includes(normalizedSearch)
+        row.fcName.toLowerCase().includes(normalizedSearch) ||
+        row.segment.toLowerCase().includes(normalizedSearch)
       );
     });
   }
@@ -236,25 +357,13 @@ export async function getProjectTrend(siteNo: string, filters: FilterParams = {}
 }
 
 export function formatHandlerError(error: unknown) {
-  if (error instanceof Error) {
-    if ("code" in error && error.code === "ENOENT") {
-      return {
-        error: `Cannot find CSV file at ${getCsvPath()}`
-      };
-    }
-
-    return {
-      error: error.message
-    };
-  }
-
   return {
-    error: "Unknown CSV data error"
+    error: toReadableError(error)
   };
 }
 
 export function warmRemoteSnapshot() {
-  void getCsvSnapshot().catch(() => {
+  void getRemoteSnapshot().catch(() => {
     // Warm-up should never crash the server; request handlers still surface errors.
   });
 }
