@@ -150,9 +150,14 @@ async function hydratePersistedCache() {
       }
     })();
 
-    pendingCacheHydration.finally(() => {
-      pendingCacheHydration = null;
-    });
+    void pendingCacheHydration.then(
+      () => {
+        pendingCacheHydration = null;
+      },
+      () => {
+        pendingCacheHydration = null;
+      }
+    );
   }
 
   await pendingCacheHydration;
@@ -212,9 +217,14 @@ async function getRemoteSnapshot() {
   if (!pendingRemoteSnapshot) {
     pendingRemoteSnapshot = refreshRemoteSnapshot();
 
-    pendingRemoteSnapshot.finally(() => {
-      pendingRemoteSnapshot = null;
-    });
+    void pendingRemoteSnapshot.then(
+      () => {
+        pendingRemoteSnapshot = null;
+      },
+      () => {
+        pendingRemoteSnapshot = null;
+      }
+    );
   }
 
   if (remoteCache.snapshot && remoteCache.records) {
