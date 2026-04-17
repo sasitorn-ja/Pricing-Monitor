@@ -10,6 +10,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         search: readQueryValue(req.query, "search"),
         ladder: readQueryValue(req.query, "ladder"),
         day: readQueryValue(req.query, "day"),
+        page: Number(readQueryValue(req.query, "page") || 1),
+        pageSize: Number(readQueryValue(req.query, "pageSize") || 20),
         divisions: readQueryValue(req.query, "divisions")
           .split(",")
           .map((value) => value.trim())

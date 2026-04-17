@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -143,6 +143,7 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 250;
 const API_TIMEOUT_MS = 20_000;
 const tableColumnHelp = {
+  division: "หน่วยงานขายหรือพื้นที่ที่โครงการนี้สังกัด",
   segment: "กลุ่มขนาดโครงการเดียวกับที่ใช้กรองในกราฟสัดส่วนด้านบน",
   ladder: "ระดับการขึ้นราคาเทียบเป้า 300 บาท",
   baseline: "ค่าเฉลี่ย NP_AVG ตรง ๆ ช่วงวันที่ 1-24",
@@ -281,6 +282,187 @@ function HeaderWithHint({
       </button>
       {isOpen ? <span className="hintPopup">{hint}</span> : null}
     </span>
+  );
+}
+
+function summarizeMultiSelect(selectedValues: string[], fallbackLabel: string) {
+  if (selectedValues.length === 0) {
+    return fallbackLabel;
+  }
+
+  if (selectedValues.length === 1) {
+    return selectedValues[0];
+  }
+
+  return `${selectedValues[0]} +${selectedValues.length - 1}`;
+}
+
+function SingleSelectDropdown({
+  label,
+  options,
+  selectedValue,
+  fallbackLabel,
+  onSelect
+}: {
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  selectedValue: string;
+  fallbackLabel: string;
+  onSelect: (value: string) => void;
+}) {
+  const dropdownRef = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!dropdownRef.current?.open) {
+        return;
+      }
+
+      if (!dropdownRef.current.contains(event.target as Node)) {
+        dropdownRef.current.open = false;
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && dropdownRef.current?.open) {
+        dropdownRef.current.open = false;
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  const selectedLabel =
+    options.find((option) => option.value === selectedValue)?.label ?? fallbackLabel;
+
+  const closeDropdown = () => {
+    if (dropdownRef.current) {
+      dropdownRef.current.open = false;
+    }
+  };
+
+  return (
+    <details ref={dropdownRef} className="singleSelectDropdown">
+      <summary>
+        <span>{label}</span>
+        <strong>{selectedLabel}</strong>
+      </summary>
+      <div className="singleSelectMenu">
+        <button
+          type="button"
+          className={`singleSelectOption ${selectedValue === "" ? "selected" : ""}`}
+          onClick={() => {
+            onSelect("");
+            closeDropdown();
+          }}
+        >
+          ราคาล่าสุดทุกวัน
+        </button>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`singleSelectOption ${selectedValue === option.value ? "selected" : ""}`}
+            onClick={() => {
+              onSelect(option.value);
+              closeDropdown();
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selectedValues,
+  fallbackLabel,
+  onToggle,
+  onClear
+}: {
+  label: string;
+  options: string[];
+  selectedValues: string[];
+  fallbackLabel: string;
+  onToggle: (value: string) => void;
+  onClear: () => void;
+}) {
+  const dropdownRef = useRef<HTMLDetailsElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!dropdownRef.current?.open) {
+        return;
+      }
+
+      if (!dropdownRef.current.contains(event.target as Node)) {
+        dropdownRef.current.open = false;
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && dropdownRef.current?.open) {
+        dropdownRef.current.open = false;
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  const closeDropdown = () => {
+    if (dropdownRef.current) {
+      dropdownRef.current.open = false;
+    }
+  };
+
+  return (
+    <details ref={dropdownRef} className="multiSelectDropdown">
+      <summary>
+        <span>{label}</span>
+        <strong>{summarizeMultiSelect(selectedValues, fallbackLabel)}</strong>
+      </summary>
+      <div className="multiSelectMenu">
+        <button
+          type="button"
+          className={`compactFilterChip ${selectedValues.length === 0 ? "selected" : ""}`}
+          onClick={() => {
+            onClear();
+            closeDropdown();
+          }}
+        >
+          ทั้งหมด
+        </button>
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`compactFilterChip ${selectedValues.includes(option) ? "selected" : ""}`}
+            onClick={() => {
+              onToggle(option);
+              closeDropdown();
+            }}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -519,19 +701,32 @@ export function App() {
   const availableSegments = meta?.filters?.segments ?? [];
 
   const totalPages = Math.max(1, Math.ceil(projectTotal / PAGE_SIZE));
-  const pageStart = projectTotal === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(currentPage * PAGE_SIZE, projectTotal);
-  const activeTableFilters = [
-    { label: "Ladder", value: selectedBucket || "ทั้งหมด" },
-    {
+  const activeTableFilters: Array<{ label: string; value: string }> = [];
+
+  if (selectedBucket) {
+    activeTableFilters.push({ label: "Ladder", value: selectedBucket });
+  }
+
+  if (selectedDay) {
+    activeTableFilters.push({
       label: "วันที่",
-      value: selectedDay ? formatThaiDateShort(selectedDay) : "ราคาล่าสุด"
-    },
-    {
+      value: formatThaiDateShort(selectedDay)
+    });
+  }
+
+  if (selectedDivisions.length > 0) {
+    activeTableFilters.push({
+      label: "Division",
+      value: selectedDivisions.join(", ")
+    });
+  }
+
+  if (selectedSegments.length > 0) {
+    activeTableFilters.push({
       label: "Segment",
-      value: selectedSegments.length > 0 ? selectedSegments.join(", ") : "ทุก segment"
-    }
-  ];
+      value: selectedSegments.join(", ")
+    });
+  }
 
   if (search.trim()) {
     activeTableFilters.push({
@@ -820,41 +1015,42 @@ export function App() {
 
         <div className="filterShell projectFilterShell">
           <div className="tableFilterTop">
-            <div className="tableFilterInputs">
+            <div className="tableFilterPrimary">
               <input
                 className="searchField"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="ค้นหา SITE_NAME, SITE_NO, division, segment"
               />
-              <label className="filterField filterFieldSelect compactField">
-                <span>เลือกวันที่</span>
-                <select
-                  value={selectedDay}
-                  onChange={(event) => setSelectedDay(event.target.value)}
-                >
-                  <option value="">ราคาล่าสุดทุกวัน</option>
-                  {availableDays.map((day) => (
-                    <option key={day} value={day}>
-                      {formatThaiDate(day)}
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
 
-            <div className="tableFilterStatsCompact">
-              <span className="tableFilterStatsLabel">รายการ</span>
-              <strong>
-                {hasLoadedProjects
-                  ? `${formatNumber(pageStart)}-${formatNumber(pageEnd)}`
-                  : "..."}
-              </strong>
-              <span>
-                {hasLoadedProjects
-                  ? `จาก ${formatNumber(projectTotal)}`
-                  : "กำลังโหลดรายการโครงการ..."}
-              </span>
+            <div className="tableFilterInputs">
+              <SingleSelectDropdown
+                label="วันที่"
+                options={availableDays.map((day) => ({
+                  value: day,
+                  label: formatThaiDate(day)
+                }))}
+                selectedValue={selectedDay}
+                fallbackLabel="ราคาล่าสุดทุกวัน"
+                onSelect={setSelectedDay}
+              />
+              <MultiSelectDropdown
+                label="Division"
+                options={availableDivisions}
+                selectedValues={selectedDivisions}
+                fallbackLabel="ทุก division"
+                onToggle={(value) => toggleValue(value, setSelectedDivisions)}
+                onClear={() => setSelectedDivisions([])}
+              />
+              <MultiSelectDropdown
+                label="Segment"
+                options={availableSegments}
+                selectedValues={selectedSegments}
+                fallbackLabel="ทุก segment"
+                onToggle={(value) => toggleValue(value, setSelectedSegments)}
+                onClear={() => setSelectedSegments([])}
+              />
             </div>
           </div>
 
@@ -881,38 +1077,19 @@ export function App() {
             </div>
           </div>
 
-          <div className="tableCompactRow">
-            <span className="tableCompactLabel">SEGMENT</span>
-            <div className="compactFilterChips">
-              <button
-                type="button"
-                className={`compactFilterChip ${selectedSegments.length === 0 ? "selected" : ""}`}
-                onClick={() => setSelectedSegments([])}
-              >
-                ทั้งหมด
-              </button>
-              {availableSegments.map((segment) => (
-                <button
-                  key={segment}
-                  type="button"
-                  className={`compactFilterChip ${selectedSegments.includes(segment) ? "selected" : ""}`}
-                  onClick={() => toggleValue(segment, setSelectedSegments)}
-                >
-                  {segment}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="tableFilterFooter">
-            <div className="tableActiveFilters">
-              {activeTableFilters.map((filter) => (
-                <span key={`${filter.label}-${filter.value}`} className="tableActivePill">
-                  <strong>{filter.label}</strong>
-                  {filter.value}
-                </span>
-              ))}
-            </div>
+            {activeTableFilters.length > 0 ? (
+              <div className="tableActiveFilters">
+                {activeTableFilters.map((filter) => (
+                  <span key={`${filter.label}-${filter.value}`} className="tableActivePill">
+                    <strong>{filter.label}</strong>
+                    {filter.value}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="tableActiveFiltersHint">ยังไม่ได้เลือกตัวกรองเพิ่มเติม</div>
+            )}
             <button
               type="button"
               className="clearFilterButton"
@@ -920,6 +1097,7 @@ export function App() {
                 setSearch("");
                 setSelectedDay("");
                 setSelectedBucket("");
+                setSelectedDivisions([]);
                 setSelectedSegments([]);
                 setCurrentPage(1);
               }}
@@ -949,6 +1127,17 @@ export function App() {
                 <tr>
                   <th>SITE_NO</th>
                   <th>SITE_NAME</th>
+                  <th>
+                    <HeaderWithHint
+                      hintKey="division"
+                      label="Division"
+                      hint={tableColumnHelp.division}
+                      activeHint={activeHint}
+                      onToggle={(key) =>
+                        setActiveHint((current) => (current === key ? null : key))
+                      }
+                    />
+                  </th>
                   <th>
                     <HeaderWithHint
                       hintKey="segment"
@@ -1052,6 +1241,7 @@ export function App() {
                         </span>
                       </div>
                     </td>
+                    <td>{row.divisionName || "-"}</td>
                     <td>{row.segment || "-"}</td>
                     <td>{row.ladder}</td>
                     <td>{formatNumber(row.baselineNetPrice)}</td>
