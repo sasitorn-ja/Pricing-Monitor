@@ -117,7 +117,6 @@ type TrendRange = "all" | "post25" | "last14" | "last7";
 type CalcHelpKey =
   | "totalIncrease"
   | "averageToTarget"
-  | "lowestIncrease"
   | "highestIncrease"
   | "proportionChart"
   | "averageTrend"
@@ -874,15 +873,6 @@ export function App() {
         `คำนวณจากข้อมูล ${summaryDateRange}`
       ]
     },
-    lowestIncrease: {
-      title: "ขึ้นจาก Baseline ต่ำสุด คำนวณยังไง",
-      lines: [
-        "ค่านี้คือโครงการที่เพิ่มราคาจาก Baseline น้อยที่สุดในชุดข้อมูลที่กำลังคำนวณ",
-        "สูตร: เลือกค่าราคาที่เพิ่มขึ้นต่ำสุดจากทุกโครงการ",
-        "ถ้าราคาต่ำกว่า Baseline ระบบนับราคาที่เพิ่มขึ้นเป็น 0",
-        `คำนวณจาก ${formatNumber(summary.comparableSites)} โครงการ`
-      ]
-    },
     highestIncrease: {
       title: "ขึ้นจาก Baseline สูงสุด คำนวณยังไง",
       lines: [
@@ -960,14 +950,6 @@ export function App() {
           <span>Average to target</span>
           <strong>{formatPercent(targetHitShare)}</strong>
           <p>สัดส่วนโครงการที่ขึ้นถึง 300 บาท B/C ขึ้นไป {summaryDateRange}</p>
-        </article>
-        <article className="statCard">
-          <button type="button" className="calcHelpButton" onClick={() => setActiveCalcHelp("lowestIncrease")}>
-            วิธีคำนวณ
-          </button>
-          <span>ขึ้นจาก Baseline ต่ำสุด</span>
-          <strong>{formatNumber(summary.minIncrease)} บาท</strong>
-          <p>โครงการที่เพิ่มราคาจาก baseline น้อยที่สุด</p>
         </article>
         <article className="statCard">
           <button type="button" className="calcHelpButton" onClick={() => setActiveCalcHelp("highestIncrease")}>
