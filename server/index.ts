@@ -3,6 +3,7 @@ import express from "express";
 import path from "path";
 import {
   formatHandlerError,
+  getDashboard,
   getMeta,
   getProjectTrend,
   getProjects,
@@ -13,6 +14,23 @@ import {
 
 const app = express();
 app.use(cors());
+
+app.get("/api/dashboard", async (req, res) => {
+  try {
+    const divisions = String(req.query.divisions ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const segments = String(req.query.segments ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    res.json(await getDashboard({ divisions, segments, day: String(req.query.day ?? "") }));
+  } catch (error) {
+    res.status(502).json(formatHandlerError(error));
+  }
+});
 
 app.get("/api/meta", async (_req, res) => {
   try {

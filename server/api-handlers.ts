@@ -334,6 +334,73 @@ export async function getMeta() {
   };
 }
 
+export async function getDashboard(filters: FilterParams = {}) {
+  const { snapshot, records } = await getRemoteSnapshot();
+  const filteredSnapshot =
+    normalizeFilterValues(filters.divisions).length > 0 ||
+    normalizeFilterValues(filters.segments).length > 0
+      ? await getFilteredSnapshot(filters)
+      : snapshot;
+  const divisions = [
+    ...new Set(
+      records
+        .map((record) => String(record.DIVISION_NAME ?? "").trim())
+        .filter(Boolean)
+    )
+  ].sort();
+  const segments = [
+    ...new Set(
+      records.map((record) => String(record.SEGMENT ?? "").trim()).filter(Boolean)
+    )
+  ].sort();
+  const latestDay = filteredSnapshot.trend.at(-1)?.day;
+  const summary = filters.day
+    ? filteredSnapshot.summaryByDay.get(filters.day)
+    : latestDay
+      ? filteredSnapshot.summaryByDay.get(latestDay)
+      : null;
+
+  return {
+    meta: {
+      metadata: filteredSnapshot.metadata,
+      config: {
+        baselineStart: BASELINE_START,
+        baselineEnd: BASELINE_END,
+        campaignStart: CAMPAIGN_START,
+        targetIncrease: TARGET_INCREASE
+      },
+      filters: {
+        divisions,
+        segments
+      }
+    },
+    summary:
+      summary ??
+      (filters.day
+        ? {
+            comparableSites: 0,
+            ladder500: 0,
+            ladder400: 0,
+            ladder300: 0,
+            ladder250: 0,
+            ladder200: 0,
+            ladder100: 0,
+            ladder0: 0,
+            belowTargetSites: 0,
+            totalIncrease: 0,
+            avgIncrease: 0,
+            avgTargetPercent: 0,
+            targetHitShare: 0,
+            minIncrease: 0,
+            maxIncrease: 0,
+            latestDayMin: filters.day,
+            latestDayMax: filters.day
+          }
+        : filteredSnapshot.summary),
+    trend: filteredSnapshot.trend
+  };
+}
+
 export async function getSummary(filters: FilterParams = {}) {
   const snapshot = await getFilteredSnapshot(filters);
   if (filters.day) {

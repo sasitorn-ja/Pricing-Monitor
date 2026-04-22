@@ -148,6 +148,12 @@ type ProjectResponse = {
   total: number;
 };
 
+type DashboardResponse = {
+  meta: MetaResponse;
+  summary: SummaryResponse;
+  trend: TrendPoint[];
+};
+
 type TrendRange = "all" | "post25" | "last14" | "last7";
 type CalcHelpKey =
   | "baselineDefinition"
@@ -204,7 +210,7 @@ const discountDropSeries = [
 const PAGE_SIZE = 20;
 const MULTI_LADDER_FETCH_SIZE = 100_000;
 const SEARCH_DEBOUNCE_MS = 250;
-const API_TIMEOUT_MS = 20_000;
+const API_TIMEOUT_MS = 60_000;
 const tableColumnHelp = {
   division: "พื้นที่ขายหรือหน่วยงานที่โครงการนี้อยู่ ใช้สำหรับกรองและดูภาพรวมแยกตามพื้นที่",
   segment: "กลุ่มขนาดของโครงการ เช่น tiny, small, medium ใช้ตัวเดียวกับตัวกรอง Segment ด้านบน",
@@ -600,6 +606,7 @@ export function App() {
   const [activeCalcHelp, setActiveCalcHelp] = useState<CalcHelpKey | null>(null);
   const [metaLoading, setMetaLoading] = useState(true);
   const [error, setError] = useState("");
+  const [projectError, setProjectError] = useState("");
 
   const buildFilterQuery = () => {
     const params = new URLSearchParams();
@@ -633,12 +640,15 @@ export function App() {
   }, [search]);
 
   useEffect(() => {
-    async function loadMeta() {
+    async function loadInitialDashboard() {
       try {
         setMetaLoading(true);
         setError("");
-        const metaResponse = await fetchJson<MetaResponse>("/api/meta");
-        setMeta(metaResponse);
+        const dashboardResponse = await fetchJson<DashboardResponse>("/api/dashboard");
+        setMeta(dashboardResponse.meta);
+        setSummary(dashboardResponse.summary);
+        setTrend(dashboardResponse.trend);
+        setHasLoadedSummary(true);
       } catch (requestError) {
         setError(
           requestError instanceof Error ? requestError.message : "Unknown error"
@@ -648,11 +658,24 @@ export function App() {
       }
     }
 
-    void loadMeta();
+    void loadInitialDashboard();
   }, []);
 
   useEffect(() => {
     async function loadFilteredDashboard() {
+      if (!meta) {
+        return;
+      }
+
+      if (
+        hasLoadedSummary &&
+        !selectedDay &&
+        selectedDivisions.length === 0 &&
+        selectedSegments.length === 0
+      ) {
+        return;
+      }
+
       try {
         setError("");
         const params = buildFilterQuery();
@@ -678,12 +701,16 @@ export function App() {
     }
 
     void loadFilteredDashboard();
-  }, [selectedDay, selectedDivisions, selectedSegments]);
+  }, [hasLoadedSummary, meta, selectedDay, selectedDivisions, selectedSegments]);
 
   useEffect(() => {
     async function loadProjects() {
+      if (!hasLoadedSummary || !meta) {
+        return;
+      }
+
       try {
-        setError("");
+        setProjectError("");
         const baseParams = buildFilterQuery();
 
         if (selectedDay) {
@@ -755,7 +782,7 @@ export function App() {
           setSelectedSite(projectResponse.rows[0]?.siteNo ?? "");
         }
       } catch (requestError) {
-        setError(
+        setProjectError(
           requestError instanceof Error ? requestError.message : "Unknown error"
         );
       }
@@ -765,6 +792,8 @@ export function App() {
   }, [
     currentPage,
     debouncedSearch,
+    hasLoadedSummary,
+    meta,
     selectedBuckets,
     selectedDay,
     selectedDivisions,
@@ -1477,7 +1506,11 @@ export function App() {
         </div>
 
         <div className="tableWrap">
-          {hasLoadedProjects ? (
+          {projectError ? (
+            <div className="tableLoadingState">
+              โหลดรายการโครงการไม่สำเร็จ: {projectError}
+            </div>
+          ) : hasLoadedProjects ? (
             <table>
               <thead>
                 <tr>
