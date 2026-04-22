@@ -7,6 +7,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -1417,7 +1418,7 @@ export function App() {
           </div>
           <div className="chartWrap">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={selectedTrendChartData}>
+              <LineChart data={selectedTrendChartData} margin={{ top: 18, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2f3e65" />
                 <XAxis
                   dataKey="day"
@@ -1463,6 +1464,23 @@ export function App() {
                   }}
                 />
                 <Legend />
+                {meta ? (
+                  <ReferenceLine
+                    x={meta.config.baselineEnd}
+                    yAxisId="price"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    strokeDasharray="6 5"
+                    label={{
+                      value: "24 มี.ค.",
+                      position: "insideTop",
+                      offset: 8,
+                      fill: "#ef4444",
+                      fontSize: 13,
+                      fontWeight: 700
+                    }}
+                  />
+                ) : null}
                 <Line
                   type="monotone"
                   yAxisId="price"
