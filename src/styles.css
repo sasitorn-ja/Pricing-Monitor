@@ -413,6 +413,12 @@ select {
   margin: 8px 0 0;
 }
 
+.panelHeader .chartNote {
+  color: #8fb8ea;
+  font-size: 0.88rem;
+  margin-top: 4px;
+}
+
 .tableHeaderActions {
   display: flex;
   gap: 10px;

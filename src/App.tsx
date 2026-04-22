@@ -143,6 +143,12 @@ type ProjectTrendPoint = {
   ladder: string;
 };
 
+type ProjectTrendChartPoint = Omit<ProjectTrendPoint, "postNetPrice"> & {
+  postNetPrice: number | null;
+  hasRecord: boolean;
+  isBaselinePeriod: boolean;
+};
+
 type ProjectResponse = {
   rows: ProjectRow[];
   total: number;
@@ -295,6 +301,22 @@ function formatThaiDateShort(value: string) {
     month: "short",
     day: "numeric"
   });
+}
+
+function addDays(dateText: string, days: number) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getDateRange(startDay: string, endDay: string) {
+  const days: string[] = [];
+
+  for (let day = startDay; day <= endDay; day = addDays(day, 1)) {
+    days.push(day);
+  }
+
+  return days;
 }
 
 function formatSummaryDateRange(summary: SummaryResponse, fallbackDay?: string) {
@@ -829,6 +851,51 @@ export function App() {
     void loadSelectedTrend();
   }, [selectedSite, selectedDivisions, selectedSegments]);
 
+  const selectedTrendChartData = useMemo<ProjectTrendChartPoint[]>(() => {
+    if (!meta || !selectedSite || selectedTrend.length === 0) {
+      return selectedTrend.map((point) => ({
+        ...point,
+        increaseAmount:
+          point.day >= (meta?.config.campaignStart ?? "9999-12-31")
+            ? point.increaseAmount
+            : 0,
+        hasRecord: true,
+        isBaselinePeriod: point.day < (meta?.config.campaignStart ?? "0000-01-01")
+      }));
+    }
+
+    const trendByDay = new Map(selectedTrend.map((point) => [point.day, point]));
+    const template = selectedTrend[0];
+    const lastDay = meta.metadata.max_dp_date || selectedTrend.at(-1)?.day || template.day;
+
+    return getDateRange(meta.config.baselineStart, lastDay).map((day) => {
+      const point = trendByDay.get(day);
+
+      if (point) {
+        return {
+          ...point,
+          increaseAmount: day >= meta.config.campaignStart ? point.increaseAmount : 0,
+          targetPercent: day >= meta.config.campaignStart ? point.targetPercent : 0,
+          hasRecord: true,
+          isBaselinePeriod: day < meta.config.campaignStart
+        };
+      }
+
+      return {
+        siteNo: selectedSite,
+        siteName: template.siteName,
+        day,
+        baselineNetPrice: template.baselineNetPrice,
+        postNetPrice: null,
+        increaseAmount: 0,
+        targetPercent: 0,
+        ladder: "ไม่มีข้อมูลขาย",
+        hasRecord: false,
+        isBaselinePeriod: day < meta.config.campaignStart
+      };
+    });
+  }, [meta, selectedSite, selectedTrend]);
+
   const post25TrendData = useMemo(() => {
     if (!meta) {
       return trend;
@@ -1017,9 +1084,11 @@ export function App() {
       lines: [
         "กราฟนี้แสดงเฉพาะโครงการที่คลิกเลือกจากตาราง เพื่อดูการเปลี่ยนแปลงของโครงการนั้นรายวัน",
         "เส้นราคาขายคือราคา NP_AVG รายวันของโครงการนั้น โดยถ่วงน้ำหนักด้วย SUMQ ถ้าวันนั้นมีหลาย record",
-        "เส้นขึ้นราคาคือราคาขายรายวัน - ราคา Baseline ของโครงการเดียวกัน",
-        "ถ้าราคาขายรายวันต่ำกว่า Baseline จะนับการขึ้นราคาเป็น 0",
-        "กราฟรายโครงการแสดงข้อมูลตั้งแต่ 1 มี.ค. เป็นต้นไปเท่าที่โครงการนั้นมีข้อมูล"
+        "ช่วง 1-24 มี.ค. ใช้สร้าง Baseline จึงยังไม่ตีความว่าเป็นการขึ้นราคา",
+        "ตั้งแต่ 25 มี.ค. เป็นต้นไป เส้นขึ้นราคาคือราคาขายรายวัน - ราคา Baseline ของโครงการเดียวกัน",
+        "ถ้าราคาขายรายวันหลัง 25 มี.ค. ต่ำกว่า Baseline จะนับการขึ้นราคาเป็น 0",
+        "วันที่ไม่มีข้อมูลขายจะแสดงเส้นขึ้นราคาเป็น 0 และเว้นเส้นราคาขายไว้ เพื่อไม่ให้เข้าใจผิดว่าราคาขายเป็น 0",
+        "กราฟรายโครงการแสดงแกนวันตั้งแต่ 1 มี.ค. ถึงวันล่าสุดของข้อมูล"
       ]
     },
     projectTable: {
@@ -1338,6 +1407,9 @@ export function App() {
                 {selectedTrend[0]?.siteName ?? "เลือกไซต์จากตารางด้านล่าง"}{" "}
                 {selectedSite ? `(${selectedSite})` : ""}
               </p>
+              <p className="chartNote">
+                ช่วง 1-24 มี.ค. ใช้สร้าง Baseline; หลัง 25 มี.ค. จึงคำนวณขึ้นราคาเทียบ Baseline
+              </p>
             </div>
             <button type="button" className="calcHelpButton compact" onClick={() => setActiveCalcHelp("projectTrend")}>
               วิธีคำนวณ
@@ -1345,9 +1417,14 @@ export function App() {
           </div>
           <div className="chartWrap">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={selectedTrend}>
+              <LineChart data={selectedTrendChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2f3e65" />
-                <XAxis dataKey="day" tickFormatter={formatShortDate} stroke="#9fb0d0" />
+                <XAxis
+                  dataKey="day"
+                  tickFormatter={formatShortDate}
+                  stroke="#9fb0d0"
+                  minTickGap={18}
+                />
                 <YAxis
                   yAxisId="price"
                   stroke="#9fb0d0"
@@ -1362,10 +1439,28 @@ export function App() {
                   width={84}
                 />
                 <Tooltip
-                  formatter={(value, name) => [
-                    formatBaht(Number(value ?? 0)),
-                    String(name)
-                  ]}
+                  formatter={(value, name, item) => {
+                    const point = item.payload as ProjectTrendChartPoint;
+
+                    if (!point.hasRecord) {
+                      return [
+                        name === "ราคาขาย (บาท)"
+                          ? "ไม่มีข้อมูลขาย"
+                          : "ไม่มีข้อมูลขาย (นับเป็น 0)",
+                        String(name)
+                      ];
+                    }
+
+                    if (point.isBaselinePeriod && name === "ขึ้นราคา (บาท)") {
+                      return ["ช่วง Baseline ยังไม่คำนวณการขึ้นราคา", String(name)];
+                    }
+
+                    if (value === null || value === undefined) {
+                      return ["ไม่มีข้อมูล", String(name)];
+                    }
+
+                    return [formatBaht(Number(value)), String(name)];
+                  }}
                 />
                 <Legend />
                 <Line
@@ -1375,6 +1470,7 @@ export function App() {
                   stroke="#7dd3fc"
                   strokeWidth={3}
                   dot
+                  connectNulls={false}
                   name="ราคาขาย (บาท)"
                 />
                 <Line
