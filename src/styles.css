@@ -305,6 +305,32 @@ select {
   font-size: 0.88rem;
 }
 
+.segmentedControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(123, 157, 214, 0.22);
+  border-radius: 999px;
+  background: rgba(7, 17, 34, 0.78);
+}
+
+.segmentedControl button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #bfd0ef;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.segmentedControl button.active {
+  background: rgba(53, 98, 168, 0.86);
+  color: #eef5ff;
+}
+
 .globalFilterGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

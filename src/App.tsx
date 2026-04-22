@@ -91,6 +91,8 @@ type TrendPoint = {
 };
 
 type ShareTrendPoint = TrendPoint & {
+  ladder300Plus: number;
+  ladder300PlusShare: number;
   ladder500Share: number;
   ladder400Share: number;
   ladder300Share: number;
@@ -126,6 +128,8 @@ type ProjectRow = {
   latestDay: string;
   baselineNetPrice: number;
   currentNetPrice: number;
+  baselineDisc: number;
+  currentDisc: number;
   increaseAmount: number;
   targetPercent: number;
   ladder: string;
@@ -162,6 +166,7 @@ type DashboardResponse = {
 };
 
 type TrendRange = "all" | "post25" | "last14" | "last7";
+type PriceLadderMode = "summary" | "detail";
 type CalcHelpKey =
   | "baselineDefinition"
   | "totalIncrease"
@@ -199,6 +204,15 @@ const trendBucketSeries = [
   { shareKey: "ladder100Share", countKey: "ladder100", name: "100-199", fill: bucketColors.mid },
   { shareKey: "ladder200Share", countKey: "ladder200", name: "200-249", fill: bucketColors.bridge },
   { shareKey: "ladder250Share", countKey: "ladder250", name: "250-299", fill: bucketColors.high },
+  { shareKey: "ladder300PlusShare", countKey: "ladder300Plus", name: "300+", fill: bucketColors.topMax }
+] as const;
+
+const trendBucketDetailSeries = [
+  { shareKey: "noBaselineShare", countKey: "noBaseline", name: "ไม่มี baseline", fill: bucketColors.missing },
+  { shareKey: "ladder0Share", countKey: "ladder0", name: "0-99", fill: bucketColors.low },
+  { shareKey: "ladder100Share", countKey: "ladder100", name: "100-199", fill: bucketColors.mid },
+  { shareKey: "ladder200Share", countKey: "ladder200", name: "200-249", fill: bucketColors.bridge },
+  { shareKey: "ladder250Share", countKey: "ladder250", name: "250-299", fill: bucketColors.high },
   { shareKey: "ladder300Share", countKey: "ladder300", name: "300-399", fill: bucketColors.top },
   { shareKey: "ladder400Share", countKey: "ladder400", name: "400-499", fill: bucketColors.topHigh },
   { shareKey: "ladder500Share", countKey: "ladder500", name: "500+", fill: bucketColors.topMax }
@@ -206,12 +220,12 @@ const trendBucketSeries = [
 
 const discountDropSeries = [
   { shareKey: "noBaselineShare", countKey: "noBaseline", name: "ไม่มี baseline", fill: bucketColors.missing },
-  { shareKey: "disc0Share", countKey: "disc0", name: "0-2.9%", fill: "#7dd3fc" },
-  { shareKey: "disc3Share", countKey: "disc3", name: "3.0-5.9%", fill: "#38bdf8" },
-  { shareKey: "disc6Share", countKey: "disc6", name: "6.0-8.9%", fill: "#34d399" },
-  { shareKey: "disc9Share", countKey: "disc9", name: "9.0-11.9%", fill: "#fbbf24" },
-  { shareKey: "disc12Share", countKey: "disc12", name: "12.0-14.9%", fill: "#fb923c" },
-  { shareKey: "disc15Share", countKey: "disc15", name: "15%+", fill: "#fb7185" }
+  { shareKey: "disc0Share", countKey: "disc0", name: "0-2.9%", fill: bucketColors.low },
+  { shareKey: "disc3Share", countKey: "disc3", name: "3.0-5.9%", fill: bucketColors.mid },
+  { shareKey: "disc6Share", countKey: "disc6", name: "6.0-8.9%", fill: bucketColors.bridge },
+  { shareKey: "disc9Share", countKey: "disc9", name: "9.0-11.9%", fill: bucketColors.high },
+  { shareKey: "disc12Share", countKey: "disc12", name: "12.0-14.9%", fill: bucketColors.top },
+  { shareKey: "disc15Share", countKey: "disc15", name: "15%+", fill: bucketColors.topMax }
 ] as const;
 
 const PAGE_SIZE = 20;
@@ -225,7 +239,8 @@ const tableColumnHelp = {
   baseline: "ราคาอ้างอิงก่อนเริ่มติดตาม คำนวณจาก NP_AVG เฉลี่ยถ่วงปริมาณขายช่วง 1-24 มี.ค.",
   current: "ราคา NP_AVG ของวันที่แสดงในแถวนี้ ถ้าไม่ได้เลือกวันจะใช้วันล่าสุดของโครงการนั้น",
   increase: "ราคาที่เพิ่มขึ้น = Current - Baseline ถ้าราคาปัจจุบันต่ำกว่า Baseline จะนับเป็น 0",
-  target: "เปอร์เซ็นต์เทียบเป้า 300 บาท เช่น ขึ้น 150 บาท = 50% และขึ้น 300 บาท = 100%",
+  baselineDisc: "Disc อ้างอิงก่อนเริ่มติดตาม คำนวณจาก DC_AVG เฉลี่ยถ่วงปริมาณขายช่วง 1-24 มี.ค.",
+  currentDisc: "Disc ของวันที่แสดงในแถวนี้ ถ้าไม่ได้เลือกวันจะใช้วันล่าสุดของโครงการนั้น",
   latestDay: "วันที่ของข้อมูลราคาที่ใช้คำนวณแถวนี้"
 } as const;
 
@@ -619,6 +634,7 @@ export function App() {
   const [selectedSite, setSelectedSite] = useState<string>("");
   const [selectedTrend, setSelectedTrend] = useState<ProjectTrendPoint[]>([]);
   const [trendRange, setTrendRange] = useState<TrendRange>("all");
+  const [priceLadderMode, setPriceLadderMode] = useState<PriceLadderMode>("summary");
   const [currentPage, setCurrentPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [hasLoadedSummary, setHasLoadedSummary] = useState(false);
@@ -909,9 +925,12 @@ export function App() {
     return post25TrendData.map((point) => {
       const denominator = point.siteCount || 1;
       const volumeDenominator = point.volumeTotal || 1;
+      const ladder300Plus = point.ladder300 + point.ladder400 + point.ladder500;
 
       return {
         ...point,
+        ladder300Plus,
+        ladder300PlusShare: (ladder300Plus / denominator) * 100,
         ladder500Share: (point.ladder500 / denominator) * 100,
         ladder400Share: (point.ladder400 / denominator) * 100,
         ladder300Share: (point.ladder300 / denominator) * 100,
@@ -937,6 +956,8 @@ export function App() {
       };
     });
   }, [post25TrendData]);
+  const activeTrendBucketSeries =
+    priceLadderMode === "summary" ? trendBucketSeries : trendBucketDetailSeries;
 
   const filteredAverageTrend = useMemo(() => {
     if (!meta) {
@@ -1099,7 +1120,7 @@ export function App() {
         "Baseline คือราคาอ้างอิงของโครงการ คำนวณจาก NP_AVG เฉลี่ยถ่วง SUMQ ช่วง 1-24 มี.ค.",
         "Current คือราคา NP_AVG ของวันที่เลือก ถ้าไม่ได้เลือกวันจะใช้ราคาล่าสุดของแต่ละโครงการ",
         "Increase vs Baseline = Current - Baseline และถ้าติดลบจะนับเป็น 0",
-        "% of 300 Target = Increase vs Baseline / 300 x 100 เช่น 150 บาท = 50%",
+        "Disc Baseline และ Disc Current คือ DC_AVG เฉลี่ยถ่วง SUMQ ของช่วง baseline และวันที่แสดงในแถว",
         `ตารางแสดงทีละ ${formatNumber(PAGE_SIZE)} รายการต่อหน้า จากจำนวนโครงการที่ผ่านตัวกรองทั้งหมด`
       ]
     }
@@ -1157,6 +1178,22 @@ export function App() {
               </p>
             </div>
             <div className="chartSummaryPills">
+              <div className="segmentedControl" aria-label="รูปแบบการแสดงช่วง 300 บาทขึ้นไป">
+                <button
+                  type="button"
+                  className={priceLadderMode === "summary" ? "active" : ""}
+                  onClick={() => setPriceLadderMode("summary")}
+                >
+                  สรุป 300+
+                </button>
+                <button
+                  type="button"
+                  className={priceLadderMode === "detail" ? "active" : ""}
+                  onClick={() => setPriceLadderMode("detail")}
+                >
+                  แยก 300+
+                </button>
+              </div>
               <button type="button" className="calcHelpButton compact" onClick={() => setActiveCalcHelp("proportionChart")}>
                 วิธีคำนวณ
               </button>
@@ -1250,7 +1287,7 @@ export function App() {
                 <Legend
                   content={() => (
                     <div className="customChartLegend">
-                      {trendBucketSeries.map((series) => (
+                      {activeTrendBucketSeries.map((series) => (
                         <span key={series.shareKey}>
                           <i style={{ backgroundColor: series.fill }} />
                           {series.name}
@@ -1259,7 +1296,7 @@ export function App() {
                     </div>
                   )}
                 />
-                {trendBucketSeries.map((series) => (
+                {activeTrendBucketSeries.map((series) => (
                   <Bar
                     key={series.shareKey}
                     dataKey={series.shareKey}
@@ -1280,14 +1317,72 @@ export function App() {
             <div>
               <h2>% สัดส่วน Disc ที่ลดลง</h2>
               <p>
-                เทียบ Disc Baseline กับ Disc ณ วันนั้น โดยแบ่งช่วงลดลงทีละ 3%
-                และแสดงโครงการที่ไม่มี baseline เป็นสีเทา
+                เปอร์เซ็นต์นี้คือ Disc ของวันนั้นลดลงจาก Disc ช่วงก่อนปรับกี่ %
+                แล้วแบ่งช่วงลดลงทีละ 3%; สีเทาคือโครงการที่ไม่มีข้อมูลก่อนปรับให้เทียบ
               </p>
             </div>
             <div className="chartSummaryPills">
               <button type="button" className="calcHelpButton compact" onClick={() => setActiveCalcHelp("discountDropChart")}>
                 วิธีคำนวณ
               </button>
+              <button
+                type="button"
+                className="clearFilterButton"
+                onClick={() => {
+                  setSelectedDivisions([]);
+                  setSelectedSegments([]);
+                }}
+              >
+                ล้างตัวกรอง
+              </button>
+            </div>
+          </div>
+
+          <div className="compactFilterDock">
+            <div className="compactFilterRow">
+              <span className="compactFilterLabel">DIVISION</span>
+              <div className="compactFilterChips">
+                <button
+                  type="button"
+                  className={`compactFilterChip ${selectedDivisions.length === 0 ? "selected" : ""}`}
+                  onClick={() => setSelectedDivisions([])}
+                >
+                  ทั้งหมด
+                </button>
+                {availableDivisions.map((division) => (
+                  <button
+                    key={division}
+                    type="button"
+                    className={`compactFilterChip ${selectedDivisions.includes(division) ? "selected" : ""}`}
+                    onClick={() => toggleValue(division, setSelectedDivisions)}
+                  >
+                    {division}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="compactFilterRow">
+              <span className="compactFilterLabel">SEGMENT</span>
+              <div className="compactFilterChips">
+                <button
+                  type="button"
+                  className={`compactFilterChip ${selectedSegments.length === 0 ? "selected" : ""}`}
+                  onClick={() => setSelectedSegments([])}
+                >
+                  ทั้งหมด
+                </button>
+                {availableSegments.map((segment) => (
+                  <button
+                    key={segment}
+                    type="button"
+                    className={`compactFilterChip ${selectedSegments.includes(segment) ? "selected" : ""}`}
+                    onClick={() => toggleValue(segment, setSelectedSegments)}
+                  >
+                    {segment}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1374,7 +1469,7 @@ export function App() {
           </div>
           <div className="chartWrap lineInsightChart">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={filteredAverageTrend}>
+              <LineChart data={filteredAverageTrend} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2f3e65" />
                 <XAxis dataKey="day" tickFormatter={formatShortDate} stroke="#9fb0d0" />
                 <YAxis stroke="#9fb0d0" tickFormatter={formatNumber} />
@@ -1392,7 +1487,13 @@ export function App() {
                   strokeWidth={3}
                   dot
                   name="Average increase"
-                />
+                >
+                  <LabelList
+                    dataKey="avgIncrease"
+                    position="top"
+                    formatter={(value) => formatNumber(Number(value ?? 0))}
+                  />
+                </Line>
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1403,13 +1504,13 @@ export function App() {
         <article className="panel">
           <div className="panelHeader">
             <div>
-              <h2>Project trend</h2>
+              <h2>แนวโน้มรายโครงการ</h2>
               <p>
                 {selectedTrend[0]?.siteName ?? "เลือกไซต์จากตารางด้านล่าง"}{" "}
                 {selectedSite ? `(${selectedSite})` : ""}
               </p>
               <p className="chartNote">
-                ช่วง 1-24 มี.ค. ใช้สร้าง Baseline; หลัง 25 มี.ค. จึงคำนวณขึ้นราคาเทียบ Baseline
+                1-24 มี.ค. = ช่วงก่อนปรับราคา; หลัง 25 มี.ค. = ช่วงติดตามผล
               </p>
             </div>
             <button type="button" className="calcHelpButton compact" onClick={() => setActiveCalcHelp("projectTrend")}>
@@ -1428,16 +1529,38 @@ export function App() {
                 />
                 <YAxis
                   yAxisId="price"
-                  stroke="#9fb0d0"
+                  stroke="#7dd3fc"
+                  tick={{ fill: "#7dd3fc", fontWeight: 700 }}
                   tickFormatter={formatNumber}
                   width={84}
+                  tickCount={5}
+                  allowDecimals={false}
+                  label={{
+                    value: "ราคาขาย",
+                    angle: -90,
+                    position: "insideLeft",
+                    fill: "#7dd3fc",
+                    fontSize: 12,
+                    fontWeight: 700
+                  }}
                 />
                 <YAxis
                   yAxisId="increase"
                   orientation="right"
-                  stroke="#9fb0d0"
+                  stroke={bucketColors.top}
+                  tick={{ fill: bucketColors.top, fontWeight: 700 }}
                   tickFormatter={formatNumber}
                   width={84}
+                  tickCount={5}
+                  allowDecimals={false}
+                  label={{
+                    value: "ขึ้นราคา",
+                    angle: 90,
+                    position: "insideRight",
+                    fill: bucketColors.top,
+                    fontSize: 12,
+                    fontWeight: 700
+                  }}
                 />
                 <Tooltip
                   formatter={(value, name, item) => {
@@ -1702,9 +1825,20 @@ export function App() {
                   </th>
                   <th>
                     <HeaderWithHint
-                      hintKey="target"
-                      label="% of 300 Target"
-                      hint={tableColumnHelp.target}
+                      hintKey="baselineDisc"
+                      label="Disc Baseline"
+                      hint={tableColumnHelp.baselineDisc}
+                      activeHint={activeHint}
+                      onToggle={(key) =>
+                        setActiveHint((current) => (current === key ? null : key))
+                      }
+                    />
+                  </th>
+                  <th>
+                    <HeaderWithHint
+                      hintKey="currentDisc"
+                      label="Disc Current"
+                      hint={tableColumnHelp.currentDisc}
                       activeHint={activeHint}
                       onToggle={(key) =>
                         setActiveHint((current) => (current === key ? null : key))
@@ -1750,7 +1884,8 @@ export function App() {
                     <td>{formatNumber(row.baselineNetPrice)}</td>
                     <td>{formatNumber(row.currentNetPrice)}</td>
                     <td>{formatNumber(row.increaseAmount)}</td>
-                    <td>{formatPercent(row.targetPercent)}</td>
+                    <td>{formatNumber(row.baselineDisc)}</td>
+                    <td>{formatNumber(row.currentDisc)}</td>
                     <td>{row.latestDay}</td>
                   </tr>
                 ))}
