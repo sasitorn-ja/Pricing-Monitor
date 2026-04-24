@@ -1,272 +1,69 @@
 import {
-  CAMPAIGN_START,
   BASELINE_END,
   BASELINE_START,
+  CAMPAIGN_START,
   TARGET_INCREASE
-} from "./queries.js";
+} from "../../config/pricing.js";
+import {
+  NO_BASELINE_LADDER,
+  getDiscountDropBucket,
+  getLadder,
+  round2,
+  safeString,
+  summarizeProjects,
+  toDateOnly
+} from "./helpers.js";
+import type {
+  AnalyticsBundle,
+  PostDailyRow,
+  PricingRecord,
+  ProjectRow,
+  ProjectTrendRow
+} from "./types.js";
 
-export type PricingRecord = {
-  DIVISION_NAME: string | null;
-  FC_NAME: string | null;
-  SECT_NAME: string | null;
-  SITE_NO: string | null;
-  SITE_NAME: string | null;
-  SEGMENT: string | null;
-  CREATE_DATE: string | null;
-  DISCOUNT_DATE: string | null;
-  FUTURE_DISCOUNT_DATE: string | null;
-  DP_DATE: string | null;
-  DISCOUNT_TYPE: string | null;
-  COUNTSITE: number | null;
-  SUMQ: number | null;
-  NP_AVG: number | null;
-  NETCON: number | null;
-  DC_AVG: number | null;
-  LP_AVG: number | null;
-  CHANNEL: string | null;
-  CUSTOMER_NO: string | null;
-  CUSTOMER_NAME: string | null;
-  CUSTOMER_MEMBER_TYPE: string | null;
-  SUBCUSTOMER_NO: string | null;
-  SUBCUSTOMER_NAME: string | null;
-  SUBCUSTOMER_MEMBER_TYPE: string | null;
+export type AnalyticsOptions = {
+  baselineStart?: string;
+  baselineEnd?: string;
+  campaignStart?: string;
 };
 
-export type TrendPoint = {
-  day: string;
-  siteCount: number;
-  noBaseline: number;
-  ladder500: number;
-  ladder400: number;
-  ladder300: number;
-  ladder250: number;
-  ladder200: number;
-  ladder100: number;
-  ladder0: number;
-  volumeTotal: number;
-  volumeNoBaseline: number;
-  volumeLadder500: number;
-  volumeLadder400: number;
-  volumeLadder300: number;
-  volumeLadder250: number;
-  volumeLadder200: number;
-  volumeLadder100: number;
-  volumeLadder0: number;
-  disc0: number;
-  disc3: number;
-  disc6: number;
-  disc9: number;
-  disc12: number;
-  disc15: number;
-  avgIncrease: number;
-  avgTargetPercent: number;
-  moveInto500: number;
-  moveInto400: number;
-  moveInto300: number;
-  moveInto250: number;
-  moveInto200: number;
-  moveInto100: number;
-  moveInto0: number;
-};
-
-export type ProjectRow = {
-  siteNo: string;
-  siteName: string;
-  divisionName: string;
-  fcName: string;
-  sectName: string;
-  segment: string;
-  channel: string;
-  latestDay: string;
-  baselineNetPrice: number;
-  currentNetPrice: number;
-  baselineDisc: number;
-  currentDisc: number;
-  increaseAmount: number;
-  targetPercent: number;
-  ladder: string;
-  baselineVolume: number;
-  postVolume: number;
-};
-
-type ProjectTrendRow = {
-  siteNo: string;
-  siteName: string;
-  day: string;
-  baselineNetPrice: number;
-  postNetPrice: number;
-  increaseAmount: number;
-  targetPercent: number;
-  ladder: string;
-};
-
-type PostDailyRow = {
-  siteNo: string;
-  siteName: string;
-  day: string;
-  divisionName: string;
-  fcName: string;
-  sectName: string;
-  segment: string;
-  channel: string;
-  baselineNetPrice: number;
-  baselineDisc: number;
-  baselineVolume: number;
-  postNetPrice: number;
-  postDisc: number;
-  postVolume: number;
-  increaseAmount: number;
-  targetPercent: number;
-  ladder: string;
-  ladderRank: number;
-};
-
-type SummaryStats = {
-  comparableSites: number;
-  ladder500: number;
-  ladder400: number;
-  ladder300: number;
-  ladder250: number;
-  ladder200: number;
-  ladder100: number;
-  ladder0: number;
-  belowTargetSites: number;
-  totalIncrease: number;
-  avgIncrease: number;
-  avgTargetPercent: number;
-  targetHitShare: number;
-  minIncrease: number;
-  maxIncrease: number;
-  latestDayMin: string | null;
-  latestDayMax: string | null;
-};
-
-type AnalyticsBundle = {
-  metadata: {
-    total_rows: number;
-    total_sites: number;
-    min_dp_date: string | null;
-    max_dp_date: string | null;
-  };
-  summary: SummaryStats;
-  summaryByDay: Map<string, SummaryStats>;
-  trend: TrendPoint[];
-  projects: ProjectRow[];
-  dailyProjects: ProjectRow[];
-  projectTrendMap: Map<string, ProjectTrendRow[]>;
-};
-
-const baselineStart = new Date(BASELINE_START);
-const baselineEnd = new Date(BASELINE_END);
-const campaignStart = new Date(CAMPAIGN_START);
-const NO_BASELINE_LADDER = "ไม่มี baseline";
-
-function toDateOnly(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const dateOnly = value.slice(0, 10);
-  const date = new Date(dateOnly);
-  return Number.isNaN(date.getTime()) ? null : { raw: dateOnly, date };
+function parseDateOrDefault(value: string | undefined, fallback: string) {
+  const parsed = value ? new Date(value) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date(fallback);
 }
 
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
+function toDateKey(value: Date) {
+  return value.toISOString().slice(0, 10);
 }
 
-function getLadder(increaseAmount: number) {
-  if (increaseAmount >= 500) {
-    return { label: "500+", rank: 7 };
+export function getAnalyticsConfig(options: AnalyticsOptions = {}) {
+  const baselineStart = parseDateOrDefault(options.baselineStart, BASELINE_START);
+  const baselineEnd = parseDateOrDefault(options.baselineEnd, BASELINE_END);
+  const baselineStartValue = toDateKey(baselineStart);
+  const baselineEndValue = toDateKey(baselineEnd);
+  const campaignStart =
+    options.campaignStart ||
+    toDateKey(new Date(baselineEnd.getTime() + 24 * 60 * 60 * 1000)) ||
+    CAMPAIGN_START;
+
+  if (baselineStart > baselineEnd) {
+    return getAnalyticsConfig({
+      baselineStart: baselineEndValue,
+      baselineEnd: baselineStartValue
+    });
   }
-
-  if (increaseAmount >= 400) {
-    return { label: "400-499", rank: 6 };
-  }
-
-  if (increaseAmount >= 300) {
-    return { label: "300-399", rank: 5 };
-  }
-
-  if (increaseAmount >= 250) {
-    return { label: "250-299", rank: 4 };
-  }
-
-  if (increaseAmount >= 200) {
-    return { label: "200-249", rank: 3 };
-  }
-
-  if (increaseAmount >= 100) {
-    return { label: "100-199", rank: 2 };
-  }
-
-  return { label: "0-99", rank: 1 };
-}
-
-type DiscountDropKey = "disc0" | "disc3" | "disc6" | "disc9" | "disc12" | "disc15";
-
-function getDiscountDropBucket(baselineDisc: number, postDisc: number): DiscountDropKey {
-  const dropPoints = baselineDisc > 0 ? Math.max(baselineDisc - postDisc, 0) : 0;
-
-  if (dropPoints >= 15) return "disc15";
-  if (dropPoints >= 12) return "disc12";
-  if (dropPoints >= 9) return "disc9";
-  if (dropPoints >= 6) return "disc6";
-  if (dropPoints >= 3) return "disc3";
-  return "disc0";
-}
-
-function safeString(value: string | null) {
-  return value ?? "";
-}
-
-function summarizeProjects(rows: ProjectRow[]): SummaryStats {
-  const comparableSites = rows.length;
-  const increaseList = rows.map((row) => row.increaseAmount);
-  const totalIncrease = increaseList.reduce((sum, value) => sum + value, 0);
-  const latestDays = rows.map((row) => row.latestDay);
-  const totalPostVolume = rows.reduce((sum, row) => sum + row.postVolume, 0);
-  const weightedIncreasePerUnit =
-    totalPostVolume > 0
-      ? rows.reduce((sum, row) => sum + row.increaseAmount * row.postVolume, 0) /
-        totalPostVolume
-      : comparableSites
-        ? totalIncrease / comparableSites
-        : 0;
-  const targetHitSites = rows.filter(
-    (row) => row.increaseAmount >= TARGET_INCREASE
-  ).length;
 
   return {
-    comparableSites,
-    ladder500: rows.filter((row) => row.ladder === "500+").length,
-    ladder400: rows.filter((row) => row.ladder === "400-499").length,
-    ladder300: rows.filter((row) => row.ladder === "300-399").length,
-    ladder250: rows.filter((row) => row.ladder === "250-299").length,
-    ladder200: rows.filter((row) => row.ladder === "200-249").length,
-    ladder100: rows.filter((row) => row.ladder === "100-199").length,
-    ladder0: rows.filter((row) => row.ladder === "0-99").length,
-    belowTargetSites: rows.filter((row) => row.increaseAmount < TARGET_INCREASE).length,
-    totalIncrease: round2(totalIncrease),
-    avgIncrease: round2(weightedIncreasePerUnit),
-    avgTargetPercent: comparableSites
-      ? round2(rows.reduce((sum, row) => sum + row.targetPercent, 0) / comparableSites)
-      : 0,
-    targetHitShare: comparableSites ? round2((targetHitSites / comparableSites) * 100) : 0,
-    minIncrease: comparableSites ? round2(Math.min(...increaseList)) : 0,
-    maxIncrease: comparableSites ? round2(Math.max(...increaseList)) : 0,
-    latestDayMin:
-      latestDays.length > 0
-        ? latestDays.reduce((min, day) => (day.localeCompare(min) < 0 ? day : min))
-        : null,
-    latestDayMax:
-      latestDays.length > 0
-        ? latestDays.reduce((max, day) => (day.localeCompare(max) > 0 ? day : max))
-        : null
+    baselineStart: baselineStartValue,
+    baselineEnd: baselineEndValue,
+    campaignStart,
+    baselineStartDate: baselineStart,
+    baselineEndDate: baselineEnd
   };
 }
 
-export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
+export function buildAnalytics(records: PricingRecord[], options: AnalyticsOptions = {}): AnalyticsBundle {
+  const analyticsConfig = getAnalyticsConfig(options);
   const siteSet = new Set<string>();
   let minDate: string | null = null;
   let maxDate: string | null = null;
@@ -330,7 +127,10 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       continue;
     }
 
-    if (dpDate.date >= baselineStart && dpDate.date <= baselineEnd) {
+    if (
+      dpDate.date >= analyticsConfig.baselineStartDate &&
+      dpDate.date <= analyticsConfig.baselineEndDate
+    ) {
       const current = baselineAccumulator.get(siteNo) ?? {
         siteNo,
         siteName: safeString(record.SITE_NAME),
@@ -353,7 +153,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
       baselineAccumulator.set(siteNo, current);
     }
 
-    if (dpDate.date >= baselineStart) {
+    if (dpDate.raw >= analyticsConfig.baselineStart) {
       const key = `${siteNo}__${dpDate.raw}`;
       const current = postAccumulator.get(key) ?? {
         siteNo,
@@ -422,7 +222,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
   for (const value of postAccumulator.values()) {
     const baseline = baselineMap.get(value.siteNo);
     if (!baseline || value.totalVolume <= 0) {
-      if (!baseline && value.totalVolume > 0 && value.day >= CAMPAIGN_START) {
+      if (!baseline && value.totalVolume > 0 && value.day >= analyticsConfig.campaignStart) {
         const postNetPrice = value.priceWeightedTotal / value.totalVolume;
         const postDisc = value.discountWeightedTotal / value.totalVolume;
         const noBaselineRow = {
@@ -486,7 +286,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
     });
     projectTrendMap.set(value.siteNo, projectTrend);
 
-    if (value.day < CAMPAIGN_START) {
+    if (value.day < analyticsConfig.campaignStart) {
       continue;
     }
 
@@ -609,7 +409,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
   });
 
   for (const value of postAccumulator.values()) {
-    if (value.day < CAMPAIGN_START || value.totalVolume <= 0) {
+    if (value.day < analyticsConfig.campaignStart || value.totalVolume <= 0) {
       continue;
     }
 
@@ -683,7 +483,6 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
 
     previousBySite.set(row.siteNo, row.ladderRank);
     trendByDay.set(row.day, dayBucket);
-
   }
 
   const trend = [...trendByDay.values()]
@@ -794,6 +593,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
 
       return a.latestDay.localeCompare(b.latestDay);
     });
+
   const projects = [...comparableProjects, ...noBaselineLatestBySite.values()].sort((a, b) => {
     if (a.increaseAmount === b.increaseAmount) {
       return a.siteName.localeCompare(b.siteName);
@@ -801,6 +601,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
 
     return a.increaseAmount - b.increaseAmount;
   });
+
   const dailyProjects = [...comparableDailyProjects, ...noBaselineDailyProjects].sort((a, b) => {
     if (a.latestDay === b.latestDay) {
       if (a.increaseAmount === b.increaseAmount) {
@@ -820,7 +621,7 @@ export function buildAnalytics(records: PricingRecord[]): AnalyticsBundle {
     dailyProjectsByDay.set(row.latestDay, rows);
   }
 
-  const summaryByDay = new Map<string, SummaryStats>();
+  const summaryByDay = new Map<string, ReturnType<typeof summarizeProjects>>();
   for (const [day, rows] of dailyProjectsByDay) {
     summaryByDay.set(day, summarizeProjects(rows));
   }

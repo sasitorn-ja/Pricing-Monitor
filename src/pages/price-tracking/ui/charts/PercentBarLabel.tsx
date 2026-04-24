@@ -1,4 +1,4 @@
-import { formatPercentTick } from "../lib/format";
+import { formatPercentTick } from "../../utils/format";
 
 export function renderPercentBarLabel(props: any) {
   const x = Number(props.x ?? 0);

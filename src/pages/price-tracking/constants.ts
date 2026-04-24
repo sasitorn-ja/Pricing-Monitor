@@ -58,11 +58,13 @@ export const tableColumnHelp = {
   division: "พื้นที่ขายหรือหน่วยงานที่โครงการนี้อยู่ ใช้สำหรับกรองและดูภาพรวมแยกตามพื้นที่",
   segment: "กลุ่มขนาดของโครงการ เช่น tiny, small, medium ใช้ตัวเดียวกับตัวกรอง Segment ด้านบน",
   ladder: "ช่วงของราคาที่เพิ่มขึ้นเทียบกับ Baseline เช่น 0-99, 100-199, 200-249 หรือ 300 บาทขึ้นไป",
-  baseline: "ราคาอ้างอิงก่อนเริ่มติดตาม คำนวณจาก NP_AVG เฉลี่ยถ่วงปริมาณขายช่วง 1-24 มี.ค.",
+  baseline: "ราคาอ้างอิงก่อนเริ่มติดตาม คำนวณจาก NP_AVG เฉลี่ยถ่วงปริมาณขายช่วง Baseline ที่เลือก",
   current: "ราคา NP_AVG ของวันที่แสดงในแถวนี้ ถ้าไม่ได้เลือกวัน ตารางจะแสดงข้อมูลรายวันทั้งหมด",
   increase: "ราคาที่เพิ่มขึ้น = Current - Baseline ถ้าราคาปัจจุบันต่ำกว่า Baseline จะนับเป็น 0",
-  baselineDisc: "Disc Baseline (%) คือส่วนลดอ้างอิงก่อนเริ่มติดตาม คำนวณจาก DC_AVG เฉลี่ยถ่วงปริมาณขายช่วง 1-24 มี.ค.",
+  baselineDisc: "Disc Baseline (%) คือส่วนลดอ้างอิงก่อนเริ่มติดตาม คำนวณจาก DC_AVG เฉลี่ยถ่วงปริมาณขายช่วง Baseline ที่เลือก",
   currentDisc: "Disc Current (%) คือส่วนลดของวันที่แสดงในแถวนี้ ถ้าไม่ได้เลือกวัน ตารางจะแสดงข้อมูลรายวันทั้งหมด",
   discount: "Discount Drop (%) คือส่วนต่างของส่วนลดแบบตรง ๆ คำนวณจาก Disc Baseline - Disc Current ถ้า Current สูงกว่า Baseline จะนับเป็น 0",
   latestDay: "วันที่ของข้อมูลราคาที่ใช้คำนวณแถวนี้"
 } as const;
+
+export type TableColumnHelpKey = keyof typeof tableColumnHelp;

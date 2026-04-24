@@ -53,6 +53,14 @@ export function formatThaiDateShort(value: string) {
   });
 }
 
+export function formatDateRangeShort(startDay: string, endDay?: string) {
+  if (!endDay || startDay === endDay) {
+    return formatThaiDateShort(startDay);
+  }
+
+  return `${formatThaiDateShort(startDay)} - ${formatThaiDateShort(endDay)}`;
+}
+
 export function addDays(dateText: string, days: number) {
   const date = new Date(`${dateText}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);

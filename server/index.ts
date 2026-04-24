@@ -12,7 +12,7 @@ import {
   getSummary,
   getTrend,
   scheduleRemoteSnapshotRefresh
-} from "./api-handlers.js";
+} from "./handlers/pricing.js";
 
 const app = express();
 app.use(cors());
@@ -22,6 +22,13 @@ function readCsvQuery(value: unknown) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function readBaselineQuery(req: express.Request) {
+  return {
+    baselineStart: String(req.query.baselineStart ?? ""),
+    baselineEnd: String(req.query.baselineEnd ?? "")
+  };
 }
 
 app.get("/api/dashboard", async (req, res) => {
@@ -39,7 +46,8 @@ app.get("/api/dashboard", async (req, res) => {
         channels,
         fcNames,
         discountTypes,
-        day: String(req.query.day ?? "")
+        day: String(req.query.day ?? ""),
+        ...readBaselineQuery(req)
       })
     );
   } catch (error) {
@@ -70,7 +78,8 @@ app.get("/api/summary", async (_req, res) => {
         channels,
         fcNames,
         discountTypes,
-        day: String(_req.query.day ?? "")
+        day: String(_req.query.day ?? ""),
+        ...readBaselineQuery(_req)
       })
     );
   } catch (error) {
@@ -86,7 +95,16 @@ app.get("/api/trend", async (req, res) => {
     const fcNames = readCsvQuery(req.query.fcNames);
     const discountTypes = readCsvQuery(req.query.discountTypes);
 
-    res.json(await getTrend({ divisions, segments, channels, fcNames, discountTypes }));
+    res.json(
+      await getTrend({
+        divisions,
+        segments,
+        channels,
+        fcNames,
+        discountTypes,
+        ...readBaselineQuery(req)
+      })
+    );
   } catch (error) {
     res.status(502).json(formatHandlerError(error));
   }
@@ -108,7 +126,8 @@ app.get("/api/projects", async (req, res) => {
         segments: readCsvQuery(req.query.segments),
         channels: readCsvQuery(req.query.channels),
         fcNames: readCsvQuery(req.query.fcNames),
-        discountTypes: readCsvQuery(req.query.discountTypes)
+        discountTypes: readCsvQuery(req.query.discountTypes),
+        ...readBaselineQuery(req)
       })
     );
   } catch (error) {
@@ -127,7 +146,8 @@ app.get("/api/projects/:siteNo/trend", async (req, res) => {
         segments: readCsvQuery(req.query.segments),
         channels: readCsvQuery(req.query.channels),
         fcNames: readCsvQuery(req.query.fcNames),
-        discountTypes: readCsvQuery(req.query.discountTypes)
+        discountTypes: readCsvQuery(req.query.discountTypes),
+        ...readBaselineQuery(req)
       })
     );
   } catch (error) {
@@ -187,7 +207,10 @@ app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(process.cwd(), "dist/index.html"));
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Pricing monitor API listening on http://localhost:${port}`);
   scheduleRemoteSnapshotRefresh();
 });
+
+(globalThis as typeof globalThis & { __pricingMonitorServer?: typeof server }).__pricingMonitorServer =
+  server;

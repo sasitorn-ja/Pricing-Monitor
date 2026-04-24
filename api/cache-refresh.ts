@@ -2,9 +2,9 @@ import {
   forceRefreshRemoteSnapshot,
   formatHandlerError,
   getCacheStatus
-} from "../server/api-handlers.js";
-import type { ApiRequest, ApiResponse } from "./_shared.js";
-import { readHeaderValue, readQueryValue, sendJson } from "./_shared.js";
+} from "../server/handlers/pricing.js";
+import type { ApiRequest, ApiResponse } from "./shared/http.js";
+import { readHeaderValue, readQueryValue, sendJson } from "./shared/http.js";
 
 function canRefreshCache(req: ApiRequest) {
   const allowedTokens = [process.env.CACHE_REFRESH_TOKEN, process.env.CRON_SECRET]

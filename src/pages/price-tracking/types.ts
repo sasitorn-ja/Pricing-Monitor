@@ -42,6 +42,7 @@ export type SummaryResponse = {
 
 export type TrendPoint = {
   day: string;
+  periodEnd?: string;
   siteCount: number;
   noBaseline: number;
   ladder500: number;
@@ -154,6 +155,7 @@ export type DashboardResponse = {
 
 export type TrendRange = "all" | "post25" | "last14" | "last7";
 export type PriceLadderMode = "summary" | "detail";
+export type TrendGranularity = "daily" | "weekly";
 export type CalcHelpKey =
   | "baselineDefinition"
   | "totalIncrease"

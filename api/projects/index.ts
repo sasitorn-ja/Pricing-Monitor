@@ -1,6 +1,6 @@
-import { formatHandlerError, getProjects } from "../../server/api-handlers.js";
-import type { ApiRequest, ApiResponse } from "../_shared.js";
-import { readQueryValue, sendJson } from "../_shared.js";
+import { formatHandlerError, getProjects } from "../../server/handlers/pricing.js";
+import type { ApiRequest, ApiResponse } from "../shared/http.js";
+import { readQueryValue, sendJson } from "../shared/http.js";
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   try {
@@ -31,7 +31,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         discountTypes: readQueryValue(req.query, "discountTypes")
           .split(",")
           .map((value) => value.trim())
-          .filter(Boolean)
+          .filter(Boolean),
+        baselineStart: readQueryValue(req.query, "baselineStart"),
+        baselineEnd: readQueryValue(req.query, "baselineEnd")
       })
     );
   } catch (error) {

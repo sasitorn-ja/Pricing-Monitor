@@ -3,10 +3,14 @@ import path from "node:path";
 import {
   BASELINE_END,
   BASELINE_START,
-  CAMPAIGN_START,
   TARGET_INCREASE
-} from "./queries.js";
-import { buildAnalytics, type PricingRecord, type ProjectRow } from "./analytics.js";
+} from "../config/pricing.js";
+import {
+  buildAnalytics,
+  getAnalyticsConfig,
+  type PricingRecord,
+  type ProjectRow
+} from "../services/analytics/index.js";
 
 type AnalyticsSnapshot = ReturnType<typeof buildAnalytics>;
 
@@ -17,6 +21,8 @@ type FilterParams = {
   fcNames?: string[];
   discountTypes?: string[];
   day?: string;
+  baselineStart?: string;
+  baselineEnd?: string;
 };
 
 type CachedFilteredSnapshot = {
@@ -129,8 +135,15 @@ async function persistRemoteRecords(records: PricingRecord[]) {
   );
 }
 
+function buildSnapshot(records: PricingRecord[], filters: Pick<FilterParams, "baselineStart" | "baselineEnd"> = {}) {
+  return buildAnalytics(records, {
+    baselineStart: filters.baselineStart,
+    baselineEnd: filters.baselineEnd
+  });
+}
+
 function applyRemoteCache(records: PricingRecord[], fetchedAt = Date.now()) {
-  const snapshot = buildAnalytics(records);
+  const snapshot = buildSnapshot(records);
   filteredSnapshotCache.clear();
   remoteCache.records = records;
   remoteCache.snapshot = snapshot;
@@ -323,8 +336,20 @@ function buildFilterCacheKey(filters: FilterParams) {
   const channels = normalizeFilterValues(filters.channels).sort();
   const fcNames = normalizeFilterValues(filters.fcNames).sort();
   const discountTypes = normalizeFilterValues(filters.discountTypes).sort();
+  const analyticsConfig = getAnalyticsConfig({
+    baselineStart: filters.baselineStart,
+    baselineEnd: filters.baselineEnd
+  });
 
-  return JSON.stringify({ divisions, segments, channels, fcNames, discountTypes });
+  return JSON.stringify({
+    divisions,
+    segments,
+    channels,
+    fcNames,
+    discountTypes,
+    baselineStart: analyticsConfig.baselineStart,
+    baselineEnd: analyticsConfig.baselineEnd
+  });
 }
 
 function getAvailableFilters(records: PricingRecord[]) {
@@ -371,6 +396,12 @@ async function getFilteredSnapshot(filters: FilterParams = {}) {
   const { snapshot, records } = await getRemoteSnapshot();
   const cacheKey = buildFilterCacheKey(filters);
   const cached = filteredSnapshotCache.get(cacheKey);
+  const analyticsConfig = getAnalyticsConfig({
+    baselineStart: filters.baselineStart,
+    baselineEnd: filters.baselineEnd
+  });
+  const isDefaultBaseline =
+    analyticsConfig.baselineStart === BASELINE_START && analyticsConfig.baselineEnd === BASELINE_END;
 
   if (cached && cached.expiresAt > Date.now()) {
     return cached.snapshot;
@@ -378,11 +409,11 @@ async function getFilteredSnapshot(filters: FilterParams = {}) {
 
   const filteredRecords = filterRecords(records, filters);
 
-  if (filteredRecords === records) {
+  if (filteredRecords === records && isDefaultBaseline) {
     return snapshot;
   }
 
-  const filteredSnapshot = buildAnalytics(filteredRecords);
+  const filteredSnapshot = buildSnapshot(filteredRecords, analyticsConfig);
   filteredSnapshotCache.set(cacheKey, {
     snapshot: filteredSnapshot,
     expiresAt: remoteCache.expiresAt
@@ -394,13 +425,14 @@ async function getFilteredSnapshot(filters: FilterParams = {}) {
 export async function getMeta() {
   const { snapshot, records } = await getRemoteSnapshot();
   const filters = getAvailableFilters(records);
+  const analyticsConfig = getAnalyticsConfig();
 
   return {
     metadata: snapshot.metadata,
     config: {
-      baselineStart: BASELINE_START,
-      baselineEnd: BASELINE_END,
-      campaignStart: CAMPAIGN_START,
+      baselineStart: analyticsConfig.baselineStart,
+      baselineEnd: analyticsConfig.baselineEnd,
+      campaignStart: analyticsConfig.campaignStart,
       targetIncrease: TARGET_INCREASE
     },
     filters: {
@@ -411,12 +443,19 @@ export async function getMeta() {
 
 export async function getDashboard(filters: FilterParams = {}) {
   const { snapshot, records } = await getRemoteSnapshot();
+  const analyticsConfig = getAnalyticsConfig({
+    baselineStart: filters.baselineStart,
+    baselineEnd: filters.baselineEnd
+  });
+  const isDefaultBaseline =
+    analyticsConfig.baselineStart === BASELINE_START && analyticsConfig.baselineEnd === BASELINE_END;
   const filteredSnapshot =
     normalizeFilterValues(filters.divisions).length > 0 ||
     normalizeFilterValues(filters.segments).length > 0 ||
     normalizeFilterValues(filters.channels).length > 0 ||
     normalizeFilterValues(filters.fcNames).length > 0 ||
-    normalizeFilterValues(filters.discountTypes).length > 0
+    normalizeFilterValues(filters.discountTypes).length > 0 ||
+    !isDefaultBaseline
       ? await getFilteredSnapshot(filters)
       : snapshot;
   const availableFilters = getAvailableFilters(records);
@@ -431,9 +470,9 @@ export async function getDashboard(filters: FilterParams = {}) {
     meta: {
       metadata: filteredSnapshot.metadata,
       config: {
-        baselineStart: BASELINE_START,
-        baselineEnd: BASELINE_END,
-        campaignStart: CAMPAIGN_START,
+        baselineStart: analyticsConfig.baselineStart,
+        baselineEnd: analyticsConfig.baselineEnd,
+        campaignStart: analyticsConfig.campaignStart,
         targetIncrease: TARGET_INCREASE
       },
       filters: {
@@ -509,6 +548,8 @@ export async function getProjects(params: {
   channels?: string[];
   fcNames?: string[];
   discountTypes?: string[];
+  baselineStart?: string;
+  baselineEnd?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -521,6 +562,8 @@ export async function getProjects(params: {
     channels = [],
     fcNames = [],
     discountTypes = [],
+    baselineStart = "",
+    baselineEnd = "",
     page = 1,
     pageSize = 20
   } = params;
@@ -537,7 +580,9 @@ export async function getProjects(params: {
     segments,
     channels,
     fcNames,
-    discountTypes
+    discountTypes,
+    baselineStart,
+    baselineEnd
   });
   rows = day
     ? snapshot.dailyProjects.filter((row) => row.latestDay === day)
